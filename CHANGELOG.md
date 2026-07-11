@@ -2,7 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.2.0] - 2026-07-10
+
+### Added
+- Stack `edge` (`002-edge-stack`) — Traefik + Cloudflare Tunnel sobre una red Docker externa compartida con `prod`, ruteo por hostname vía config estática (sin socket de Docker), split `/websocket`→8072 con prioridad explícita (verificado con handshake real, `101 Switching Protocols`), límites de tamaño de request y timeouts largos, sizing aplicado. Elimina el mapeo de puerto temporal de la feature 1.
 
 ## [0.1.1] - 2026-07-10
 
