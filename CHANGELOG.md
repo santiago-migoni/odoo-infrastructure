@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-11
+
 ### Added
 - Stack `backup` (`003-backup-stack`) — contenedor efímero (`postgres:16-alpine` + `rclone` + `gnupg`, versiones pineadas) que respalda DB (rol de Postgres dedicado, solo lectura) + filestore juntos, cifra con GPG simétrico antes de tocar cualquier destino, sube a `daily/weekly/monthly` con retención GFS manejada por el propio script (30d/3 meses/1 año) más copia local de 7 días, disparado por timer de `systemd` versionado. Verificado de punta a punta en Docker local y en `serverdipleg` (hardware real).
 
