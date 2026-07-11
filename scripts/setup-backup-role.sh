@@ -1,6 +1,8 @@
 #!/bin/sh
-# Idempotente: crea el rol de solo lectura usado por el contenedor de backup.
-# Se corre una sola vez, a mano, contra el servicio `db` (ver INSTALL.md).
+# Idempotente: crea el rol de solo lectura usado por el contenedor de backup,
+# o sincroniza su password si ya existe (re-correr con un BACKUP_DB_PASSWORD
+# distinto actualiza el rol, no lo deja pegado al valor de la primera corrida).
+# Se corre a mano, contra el servicio `db` (ver INSTALL.md).
 # Lee POSTGRES_USER de .env.prod; requiere BACKUP_DB_PASSWORD en el entorno
 # (el mismo valor que después va en .env.backup).
 set -e
@@ -14,6 +16,8 @@ DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'backup_readonly') THEN
     CREATE ROLE backup_readonly WITH LOGIN PASSWORD '${BACKUP_DB_PASSWORD}';
+  ELSE
+    ALTER ROLE backup_readonly WITH PASSWORD '${BACKUP_DB_PASSWORD}';
   END IF;
 END
 \$\$;
