@@ -1,0 +1,31 @@
+http:
+  routers:
+    odoo-ws:
+      rule: "Host(`odoo.miempresa.com`) && PathPrefix(`/websocket`)"
+      priority: 100
+      service: odoo-ws
+      middlewares:
+        - odoo-buffering
+
+    odoo:
+      rule: "Host(`odoo.miempresa.com`)"
+      priority: 1
+      service: odoo
+      middlewares:
+        - odoo-buffering
+
+  services:
+    odoo-ws:
+      loadBalancer:
+        servers:
+          - url: "http://odoo:8072"
+
+    odoo:
+      loadBalancer:
+        servers:
+          - url: "http://odoo:8069"
+
+  middlewares:
+    odoo-buffering:
+      buffering:
+        maxRequestBodyBytes: 209715200

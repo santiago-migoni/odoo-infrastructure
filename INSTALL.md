@@ -14,6 +14,14 @@ Verificar que quedó etiquetada por commit y corre como `odoo` (no root):
 docker inspect --format '{{.Config.User}}' odoo-prod:$(git rev-parse --short HEAD)   # → odoo
 ```
 
+## Red compartida (bootstrap, una sola vez)
+
+`prod` y `edge` se conectan por una red Docker externa compartida — hay que crearla antes de levantar cualquiera de los dos stacks por primera vez (en cualquier orden, `docker compose up` falla con "network not found" si no existe):
+
+```bash
+docker network create odoo-shared
+```
+
 ## Levantar el stack de producción
 
 ```bash
@@ -22,10 +30,12 @@ docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml ps   # confirmar que los 3 servicios están healthy
 ```
 
-## Exposición temporal para probar (antes de que exista `edge`)
+## Levantar el stack `edge` (Traefik + Cloudflare Tunnel)
 
 ```bash
-cp docker-compose.override.yml.example docker-compose.override.yml   # gitignored, no se commitea
-docker compose -f docker-compose.prod.yml up -d
-curl http://127.0.0.1:8069/web/health
+cp .env.edge.example .env.edge   # completar con el TUNNEL_TOKEN real, nunca commitear
+docker compose -f docker-compose.edge.yml up -d
+docker compose -f docker-compose.edge.yml ps   # confirmar que traefik está healthy
 ```
+
+Sin un `TUNNEL_TOKEN` real todavía, `cloudflared` va a fallar al arrancar (esperado — ver spec de la feature `edge`). Traefik puede probarse solo, sin `cloudflared`, apuntando una request con el header `Host` correcto desde otro contenedor en la red `odoo-shared`.

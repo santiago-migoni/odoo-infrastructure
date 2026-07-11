@@ -1,8 +1,0 @@
-# Copiar a docker-compose.override.yml (gitignored) para probar el stack en
-# 127.0.0.1 antes de que exista el stack `edge` (Traefik + Cloudflare Tunnel).
-# docker-compose.prod.yml NUNCA debe tener este mapeo, ni comentado.
-
-services:
-  odoo:
-    ports:
-      - "127.0.0.1:8069:8069"

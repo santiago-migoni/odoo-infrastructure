@@ -1,0 +1,26 @@
+entryPoints:
+  web:
+    address: ":80"
+    transport:
+      respondingTimeouts:
+        readTimeout: 900s
+        writeTimeout: 900s
+        idleTimeout: 900s
+
+serversTransport:
+  forwardingTimeouts:
+    dialTimeout: 30s
+    responseHeaderTimeout: 900s
+
+providers:
+  file:
+    filename: /etc/traefik/traefik-dynamic.yml
+
+api:
+  dashboard: false
+  insecure: false
+
+ping: {}
+
+log:
+  level: INFO

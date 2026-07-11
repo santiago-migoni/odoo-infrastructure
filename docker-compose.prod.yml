@@ -82,6 +82,8 @@ services:
 
 networks:
   internal:
+    external: true
+    name: odoo-shared
 
 volumes:
   db-data:
