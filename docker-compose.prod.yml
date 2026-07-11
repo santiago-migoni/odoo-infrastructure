@@ -88,3 +88,5 @@ networks:
 volumes:
   db-data:
   odoo-data:
+    external: true
+    name: odoo-data

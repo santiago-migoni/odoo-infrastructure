@@ -2,3 +2,4 @@ docker-compose.override.yml
 .env.prod
 .env.staging
 .env.edge
+.env.backup

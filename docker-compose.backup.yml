@@ -1,0 +1,23 @@
+services:
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    env_file: .env.backup
+    volumes:
+      - odoo-data:/filestore:ro
+      - /srv/odoo-backups:/backups
+    mem_limit: 512m
+    cpus: 1.0
+    networks:
+      - internal
+
+networks:
+  internal:
+    external: true
+    name: odoo-shared
+
+volumes:
+  odoo-data:
+    external: true
+    name: odoo-data

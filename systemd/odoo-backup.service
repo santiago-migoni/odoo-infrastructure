@@ -1,0 +1,9 @@
+[Unit]
+Description=Odoo backup (DB + filestore, cifrado, local + R2)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/odoo-infrastructure
+ExecStart=/usr/bin/docker compose -f docker-compose.backup.yml run --rm backup

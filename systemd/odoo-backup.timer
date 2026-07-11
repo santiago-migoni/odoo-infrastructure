@@ -1,0 +1,9 @@
+[Unit]
+Description=Corre odoo-backup.service diariamente
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

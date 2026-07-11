@@ -4,17 +4,19 @@ Esta feature se opera con comandos `docker`/`docker compose` directos (el Makefi
 
 Secuencia completa desde cero:
 
-1. Crear la red compartida (una sola vez)
+1. Crear la red y el volumen compartidos (una sola vez)
 2. Build de la imagen de Odoo
 3. Levantar el stack de producción
 4. Levantar el stack `edge` (Traefik + Cloudflare Tunnel)
+5. Configurar y levantar el stack `backup`
 
-## 1. Red compartida (bootstrap, una sola vez)
+## 1. Red y volumen compartidos (bootstrap, una sola vez)
 
-`prod` y `edge` se conectan por una red Docker externa compartida — hay que crearla antes de levantar cualquiera de los dos stacks por primera vez (`docker compose up` falla con "network not found" si no existe):
+`prod` y `edge` se conectan por una red Docker externa compartida, y `prod`/`backup` comparten el volumen del filestore de Odoo — hay que crear ambos antes de levantar cualquier stack por primera vez (`docker compose up` falla con "network/volume not found" si no existen):
 
 ```bash
 docker network create odoo-shared
+docker volume create odoo-data
 ```
 
 ## 2. Build de la imagen
@@ -49,4 +51,31 @@ Sin un `TUNNEL_TOKEN` real todavía, `cloudflared` va a fallar al arrancar (espe
 
 ```bash
 docker run --rm --network odoo-shared curlimages/curl -s -H "Host: odoo.miempresa.com" http://traefik/web/health
+```
+
+## 5. Stack `backup`
+
+Crear (una sola vez) el rol de Postgres de solo lectura que usa el backup, contra `prod` ya levantado:
+
+```bash
+export BACKUP_DB_PASSWORD=elegir-un-password   # el mismo valor que vas a poner en .env.backup
+./scripts/setup-backup-role.sh   # lee POSTGRES_USER de .env.prod automáticamente
+```
+
+Preparar la carpeta de retención local y correr el backup a mano:
+
+```bash
+sudo mkdir -p /srv/odoo-backups
+cp .env.backup.example .env.backup   # completar con credenciales reales, nunca commitear
+docker compose -f docker-compose.backup.yml run --rm backup
+```
+
+Para probar sin credenciales reales de R2, dejar `RCLONE_DEST` en `.env.backup` apuntando a una ruta de filesystem plana (ej. `/tmp/backup-test`) en vez de `r2:bucket` — `rclone` la trata como backend local automáticamente, sin necesitar ningún `RCLONE_CONFIG_*`.
+
+Instalar el timer diario:
+
+```bash
+sudo cp systemd/odoo-backup.service systemd/odoo-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now odoo-backup.timer
 ```
