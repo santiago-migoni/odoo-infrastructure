@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Stack `backup` migrado a `restic` (`004-backup-restic`) — reemplaza `rclone` + `gnupg` + `tar/gzip` + la lógica GFS escrita a mano en bash por `restic`, que unifica cifrado en reposo (AES-256), deduplicación, retención GFS declarativa y backend S3/R2 nativo en una sola herramienta. Snapshot único DB (`pg_dump -Fp`) + filestore; repo local (14 diarias) + repo R2 (14d/4w/12m/3y) poblado por `restic copy` (una sola lectura/chunkeo del filestore). Corrige un bug de locks huérfanos (`restic unlock --remove-all`, seguro por el invariante single-writer del timer) y reconcilia el sizing 512m→1g contra el presupuesto de RAM. Enmienda de constitución R03. Verificado de punta a punta en Docker local (dedupe, restore round-trip DB+filestore, rechazo de passphrase).
+
 ## [0.3.0] - 2026-07-11
 
 ### Added

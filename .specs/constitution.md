@@ -1,7 +1,7 @@
 ---
 name: odoo-infrastructure
-version: R02
-date: 2026-07-10
+version: R03
+date: 2026-07-11
 ---
 
 # Project Constitution
@@ -20,7 +20,7 @@ Infraestructura de producción self-hosted para una instancia Odoo 19 Community 
 - **Linting / Formatting**: `pylint-odoo`, `flake8`, `black`, `isort` sobre el repo de addons custom
 - **CI/CD**: GitHub Actions con runner self-hosted en el propio servidor (sin puertos entrantes, polling saliente)
 - **Monitoring**: Prometheus + Grafana + cAdvisor + node-exporter + postgres-exporter, logs centralizados con Loki + Promtail
-- **Backups**: contenedor efímero propio (`postgres:16-alpine` + `rclone` + `gnupg`), destino Cloudflare R2 + copia local
+- **Backups**: contenedor efímero propio (`postgres:16-alpine` + `restic`), destino Cloudflare R2 + copia local — restic provee cifrado en reposo, deduplicación y retención GFS declarativa en una sola herramienta
 
 ## Code Principles
 
@@ -60,3 +60,4 @@ Infraestructura de producción self-hosted para una instancia Odoo 19 Community 
 <!-- Append-only. One line per revision made after this constitution was first approved. Format: - RNN (YYYY-MM-DD): <what changed and why> -->
 - R01 (2026-07-10): Hallazgos de `spec-flow:analyze` sobre SPEC-001. Acotado el principio de Makefile a partir de la feature #6 (bloqueaba innecesariamente features previas que operan con `docker`/`docker compose` directo, según su propio spec); `postgres:19-alpine` → `postgres:16-alpine` en Backups (coincidir con la versión de Postgres fijada en PLAN-001, no un copy-paste del major de Odoo); ejemplos de tag de imagen actualizados a `odoo:X.Y-YYYYMMDD` (reflejar la convención de build fechado adoptada en PLAN-001).
 - R02 (2026-07-10): Addons custom pasan de "submódulo git separado" a repos por categoría agregados vía `git-aggregator` (pineados por commit/rama en `repos.yaml`) — git submodules resultaron demasiado engorrosos operativamente; `git-aggregator` mantiene el mismo pin de reproducibilidad sin esa fricción, y es la herramienta estándar del ecosistema OCA para este caso exacto.
+- R03 (2026-07-11): Backups migran de `rclone` + `gnupg` a `restic` (feature 004-backup-restic) — restic unifica cifrado en reposo, deduplicación, retención GFS declarativa y backend S3/R2 nativo en una sola herramienta, reemplazando `rclone` + `gnupg` + `tar/gzip` + la lógica GFS escrita a mano en bash. La imagen base `postgres:16-alpine` se mantiene (`pg_dump` compatible con la DB).
