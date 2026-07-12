@@ -82,7 +82,9 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" https://<tu-hostname-real>/web/hea
 
 Debería dar `200` (esperar 1-2 minutos si da error de TLS/DNS recién creado el Tunnel).
 
-## 5. Stack `backup` (Postgres RO + GPG + R2)
+## 5. Stack `backup` (Postgres RO + restic → local + R2)
+
+`restic` provee el cifrado en reposo, la deduplicación y la retención GFS — no hay paso manual de GPG ni lógica de calendario. Cada corrida hace un snapshot (DB + filestore juntos) en el repo local y lo copia al repo R2.
 
 Crear el bucket y las credenciales en el dashboard de Cloudflare — **Storage & databases → R2 → Overview**:
 
@@ -99,7 +101,7 @@ export BACKUP_DB_PASSWORD=elegir-un-password   # el mismo valor que va después 
 ./scripts/setup-backup-role.sh   # lee POSTGRES_USER de .env.prod automáticamente; seguro de re-correr
 ```
 
-Preparar la carpeta de retención local y la config:
+Preparar la carpeta de los repos y la config:
 
 ```bash
 sudo mkdir -p /srv/odoo-backups
@@ -110,43 +112,38 @@ Completar `.env.backup` con los datos del bucket recién creado:
 
 ```bash
 PGPASSWORD=<mismo valor que BACKUP_DB_PASSWORD>
-GPG_PASSPHRASE=elegir-una-passphrase
-RCLONE_DEST=r2:<nombre-del-bucket>
-RCLONE_CONFIG_R2_TYPE=s3
-RCLONE_CONFIG_R2_PROVIDER=Cloudflare
-RCLONE_CONFIG_R2_ACCESS_KEY_ID=<Access Key ID>
-RCLONE_CONFIG_R2_SECRET_ACCESS_KEY=<Secret Access Key>
-RCLONE_CONFIG_R2_ENDPOINT=<endpoint>
+RESTIC_PASSWORD=elegir-una-passphrase          # guardarla fuera del server: sin ella los backups son irrecuperables
+RESTIC_REPOSITORY_LOCAL=/backups/restic
+RESTIC_REPOSITORY_R2=s3:https://<account-id>.r2.cloudflarestorage.com/<nombre-del-bucket>
+AWS_ACCESS_KEY_ID=<Access Key ID>
+AWS_SECRET_ACCESS_KEY=<Secret Access Key>
 ```
 
-Correr el backup:
+Correr el backup (la primera corrida hace `restic init` de ambos repos automáticamente):
 
 ```bash
 docker compose -f docker-compose.backup.yml run --rm backup
 ```
 
-Confirmar que llegó a R2 (dashboard, o por CLI si tenés `rclone` en el host con la misma config):
+Confirmar el snapshot en ambos repos:
 
 ```bash
-rclone lsf r2:<nombre-del-bucket>/daily/
+docker compose -f docker-compose.backup.yml run --rm --entrypoint restic backup -r /backups/restic snapshots
+# R2: mismo comando con -r "$RESTIC_REPOSITORY_R2" (requiere las AWS_* del .env.backup)
 ```
 
-**Verificar el round-trip de descifrado** (confirma que el backup es genuinamente recuperable, no solo que el archivo tiene el formato correcto):
+**Verificar el round-trip de restore** (confirma que el backup es genuinamente recuperable, no solo que el snapshot existe):
 
 ```bash
-gpg --batch --yes --passphrase "$(grep '^GPG_PASSPHRASE=' .env.backup | cut -d= -f2)" \
-  --decrypt /srv/odoo-backups/db-*.dump.gpg > /tmp/restored.dump
-pg_restore --list /tmp/restored.dump | head -5   # debe listar objetos del dump sin error
-rm /tmp/restored.dump
+docker compose -f docker-compose.backup.yml run --rm --entrypoint restic backup \
+  -r /backups/restic restore latest --target /backups/restore-test
+# El dump plano queda en /srv/odoo-backups/restore-test/.../db.sql →
+# cargarlo en una DB vacía con psql confirma que la DB es recuperable;
+# el directorio del filestore recuperado confirma el otro medio backup.
+sudo rm -rf /srv/odoo-backups/restore-test
 ```
 
-**Verificar `weekly`/`monthly`** sin esperar al domingo/día 1 del mes (no cambiar la fecha del sistema — el servidor corre otras cosas): repetir a mano los mismos `rclone copy` que haría el script para esa rama, contra el backup recién generado:
-
-```bash
-rclone copy /srv/odoo-backups/db-*.dump.gpg r2:<nombre-del-bucket>/weekly/
-rclone copy /srv/odoo-backups/filestore-*.tar.gz.gpg r2:<nombre-del-bucket>/weekly/
-rclone lsf r2:<nombre-del-bucket>/weekly/   # confirmar que llegaron
-```
+> **Migración desde el backup viejo (feature 003):** al reemplazar el script, la poda GFS en bash desaparece, así que los `.gpg` viejos (locales en `/srv/odoo-backups` y prefijos `daily/weekly/monthly` en R2) **ya no se podan solos**. Tras ≥14 días corriendo restic sin problemas (cubre la retención diaria), borrarlos a mano una única vez: `sudo rm -f /srv/odoo-backups/*.gpg` y eliminar los prefijos `daily/`, `weekly/`, `monthly/` del bucket en el dashboard de R2.
 
 Instalar el timer diario:
 

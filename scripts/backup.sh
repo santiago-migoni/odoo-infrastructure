@@ -1,53 +1,40 @@
 #!/bin/sh
 set -e
 
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-DAY_OF_WEEK=$(date +%u)   # 1=lunes .. 7=domingo
-DAY_OF_MONTH=$(date +%d)
+# Este backup es single-writer: el timer de systemd corre una sola vez por vez.
+# Por eso `restic unlock --remove-all` antes de cada operación es seguro y
+# necesario: un lock previo siempre es de una corrida muerta (kill sucio, OOM),
+# y `restic unlock` a secas NO borra locks de otra hostname — y cada contenedor
+# tiene la suya (su container ID), así que un lock huérfano bloquearía todos los
+# backups siguientes. `--remove-all` los limpia sin importar la hostname.
 
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
 
-DUMP_FILE="$WORKDIR/db-$TIMESTAMP.dump"
-FILESTORE_FILE="$WORKDIR/filestore-$TIMESTAMP.tar.gz"
+# Nombre estable (no timestamped): restic ya fecha cada snapshot, y un path
+# estable maximiza el dedupe (tablas sin cambios = mismos bloques).
+DUMP_FILE="$WORKDIR/db.sql"
+FILESTORE_DIR="/filestore/.local/share/Odoo/filestore/odoo"
 
-echo "[backup] Volcando base de datos..."
-pg_dump -Fc -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -f "$DUMP_FILE"
+echo "[backup] Volcando base de datos (pg_dump -Fp)..."
+pg_dump -Fp -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -f "$DUMP_FILE"
 
-echo "[backup] Empaquetando filestore..."
-tar czf "$FILESTORE_FILE" -C /filestore/.local/share/Odoo/filestore/odoo .
+# --- Repo local: única lectura/chunkeo del filestore ---
+export RESTIC_REPOSITORY="$RESTIC_REPOSITORY_LOCAL"
+echo "[backup] Repo local ($RESTIC_REPOSITORY)..."
+restic cat config >/dev/null 2>&1 || restic init
+restic unlock --remove-all
+restic backup "$DUMP_FILE" "$FILESTORE_DIR"
+restic forget --keep-daily 14 --prune
 
-echo "[backup] Cifrando..."
-gpg --batch --yes --passphrase "$GPG_PASSPHRASE" --symmetric --cipher-algo AES256 -o "$DUMP_FILE.gpg" "$DUMP_FILE"
-gpg --batch --yes --passphrase "$GPG_PASSPHRASE" --symmetric --cipher-algo AES256 -o "$FILESTORE_FILE.gpg" "$FILESTORE_FILE"
-
-echo "[backup] Copiando a retención local ($LOCAL_BACKUP_DIR)..."
-mkdir -p "$LOCAL_BACKUP_DIR"
-cp "$DUMP_FILE.gpg" "$FILESTORE_FILE.gpg" "$LOCAL_BACKUP_DIR/"
-find "$LOCAL_BACKUP_DIR" -type f -mtime +7 -delete
-
-echo "[backup] Subiendo a $RCLONE_DEST/daily/..."
-rclone copy "$DUMP_FILE.gpg" "$RCLONE_DEST/daily/"
-rclone copy "$FILESTORE_FILE.gpg" "$RCLONE_DEST/daily/"
-
-if [ "$DAY_OF_WEEK" = "7" ]; then
-  echo "[backup] Domingo — copiando también a weekly/..."
-  rclone copy "$DUMP_FILE.gpg" "$RCLONE_DEST/weekly/"
-  rclone copy "$FILESTORE_FILE.gpg" "$RCLONE_DEST/weekly/"
-fi
-
-if [ "$DAY_OF_MONTH" = "01" ]; then
-  echo "[backup] Día 1 del mes — copiando también a monthly/..."
-  rclone copy "$DUMP_FILE.gpg" "$RCLONE_DEST/monthly/"
-  rclone copy "$FILESTORE_FILE.gpg" "$RCLONE_DEST/monthly/"
-fi
-
-echo "[backup] Podando remoto vencido..."
-# Best-effort: si daily/weekly/monthly todavía no existen (nunca se les copió
-# nada, ej. antes del primer domingo/día 1), no hay nada que podar — no debe
-# tumbar un backup que ya se generó y subió correctamente.
-rclone delete "$RCLONE_DEST/daily/" --min-age 30d || true
-rclone delete "$RCLONE_DEST/weekly/" --min-age 90d || true
-rclone delete "$RCLONE_DEST/monthly/" --min-age 365d || true
+# --- Repo R2: se puebla copiando el snapshot ya chunkeado, sin releer el filestore ---
+# Si R2 falla, el snapshot local de arriba ya está completo.
+export RESTIC_REPOSITORY="$RESTIC_REPOSITORY_R2"
+export RESTIC_FROM_PASSWORD="$RESTIC_PASSWORD"
+echo "[backup] Repo R2 ($RESTIC_REPOSITORY)..."
+restic cat config >/dev/null 2>&1 || restic init
+restic unlock --remove-all
+restic copy --from-repo "$RESTIC_REPOSITORY_LOCAL" latest
+restic forget --keep-daily 14 --keep-weekly 4 --keep-monthly 12 --keep-yearly 3 --prune
 
 echo "[backup] OK"

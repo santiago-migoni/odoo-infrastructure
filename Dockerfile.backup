@@ -1,6 +1,6 @@
 FROM postgres:16-alpine
 
-RUN apk add --no-cache rclone=1.72.1-r4 gnupg=2.4.9-r0
+RUN apk add --no-cache restic=0.18.1-r7
 
 COPY scripts/backup.sh /usr/local/bin/backup.sh
 RUN chmod +x /usr/local/bin/backup.sh
