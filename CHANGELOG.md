@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-13
+
 ### Added
 - Stack `monitoring` (`006-monitoring-stack`) — observabilidad siempre-arriba: Prometheus (+ node-exporter, cAdvisor, postgres-exporter-prod con rol de solo lectura dedicado `pg_monitor`, retención 15d) recolecta métricas de host/contenedores/Postgres; Loki + Promtail (descubrimiento por socket de Docker, retención 15d) centralizan logs de todos los contenedores; Grafana expuesto en `grafana.miempresa.com` por el edge existente, detrás de Cloudflare Access (aprovisionamiento manual, documentado), con datasources y 3 dashboards community pineados (Node Exporter Full, cAdvisor, PostgreSQL) provisionados por config; 3 reglas de Grafana Alerting (RAM host >85%/5m, contenedor esperado caído, Postgres sin conexiones) con contact point SMTP. Ningún puerto publicado al host; imágenes pineadas; sizing revisado contra el presupuesto de RAM. Verificado con smoke real en Docker local (targets de Prometheus, provisioning de Grafana, alertas disparando y enviando email real, router de Traefik con el edge case de backend caído); un bug real corregido (`cadvisor` no registraba el factory de Docker por montar `/var/run` completo en vez del socket). `node-exporter` y el etiquetado por nombre de contenedor de `cadvisor` quedan reservados a validación en el deploy real (limitación del entorno de test, no del código).
 
