@@ -73,23 +73,23 @@ Reserva ~2-3 GiB para SO + Docker + Traefik + cloudflared + PgBouncer + monitori
 
 ### Presupuesto de RAM (estimado, 14 GiB totales) — con datos reales por servicio, 3 escenarios
 
-Cada servicio varía con su propia carga, no solo con si staging está prendida o no. La tabla de abajo da **Bajo / Normal / Alto** por servicio, contrastado — donde ya existe el stack real — contra el `mem_limit` que Docker aplica hoy. "Diseño, no implementado" marca los servicios de `staging`/`monitoring` (features 5/6 del roadmap, todavía no construidas): esos números son insumo para elegir su `mem_limit` cuando se implementen, no una medición de algo corriendo hoy.
+Cada servicio varía con su propia carga, no solo con si staging está prendida o no. La tabla de abajo da **Bajo / Normal / Alto** por servicio, contrastado contra el `mem_limit` que Docker aplica hoy.
 
 | Servicio | Estado | Bajo | Normal | Alto | `mem_limit` real | Nota |
 |---|---|---|---|---|---|---|
 | Odoo prod (3 workers, `hard=2048MiB` c/u) | implementado | 1.5 GiB | 4.0 GiB | 6.5 GiB | `8g` — holgado | El límite de Odoo es *por worker*, no total; Alto = los 3 workers simultáneamente en su hard limit |
 | Postgres prod (`shared_buffers=1.5GiB` fijo) | implementado | 1.6 GiB | 2.0 GiB | 4.3 GiB | `4.5g` — resuelto (B002) | `shared_buffers` es una reserva fija; Alto = `work_mem` multiplicado por conexiones concurrentes en el peor caso, acotado por `pool_size=20` de PgBouncer (no por `max_connections=100`). `mem_limit` subido de 2.5g a 4.5g — es un techo, no una reserva, así que no cuesta RAM en operación normal |
 | PgBouncer prod | implementado | 5 MB | 20 MB | 50 MB | `256m` — muy holgado | ~2KB/conexión + base, footprint casi plano a esta escala |
-| Traefik | implementado | 30 MB | 70 MB | 450 MB | `512m` — resuelto (B003) | Alto confirmado bajo tráfico real de 140Mbit/s; hay issues de memory leak reportados que pueden ir más alto todavía — vigilar una vez exista `monitoring` |
+| Traefik | implementado | 30 MB | 70 MB | 450 MB | `512m` — resuelto (B003) | Alto confirmado bajo tráfico real de 140Mbit/s; hay issues de memory leak reportados que pueden ir más alto todavía — vigilar con `monitoring` (006) |
 | cloudflared | implementado | 40 MB* | 80 MB* | 200 MB* | `256m` — resuelto (B003) | *Sin cifra oficial de Cloudflare — estimación por analogía con binarios Go de perfil similar, no confirmada por fuente |
 | Backup (`restic`, efímero) | implementado (004) | 100 MB | 400 MB | sin techo fijo (hasta ~30GB reportado en repos de 1-2TB) | `1g` | Nuestro repo es chico hoy; el índice crece con el tamaño del repo sin poder acotarse por config. El `mem_limit` sí lo contiene: si algún día no alcanza, el contenedor muere por OOM (falla ese backup), no se come RAM del host |
-| Prometheus | diseño, no implementado | 300 MB | 900 MB | 2.0 GiB | — (a definir en `docker-compose.monitoring.yml`) | ~3GB/millón de series; nuestra cardinalidad es baja (single-tenant, pocos targets) |
-| Grafana | diseño, no implementado | 100 MB | 250 MB | 1.5 GiB | — | Alto crece con paneles/alertas/usuarios concurrentes — improbable en single-tenant, pero sin techo duro |
-| cAdvisor | diseño, no implementado | 50 MB | 150 MB | 300 MB | — | Límites recomendados típicos (128-300Mi) |
-| node-exporter | diseño, no implementado | 20 MB | 70 MB | 200 MB | — | Liviano, límites típicos 100-200Mi |
-| postgres-exporter-prod | diseño, no implementado | 10 MB | 25 MB | riesgo de leak sin techo fijo | — | Footprint normal es "decenas de MB"; hay issues reales de memory leak con queries específicas — mitigar con `mem_limit` + restart periódico si se detecta crecimiento sostenido |
-| Loki | diseño, no implementado | 300 MB | 1.5 GiB | 4+ GiB | — | Modo monolítico (nuestro caso, un solo nodo) estabiliza ~1.5GB; queries no optimizadas pueden disparar a 4GB+ |
-| Promtail | diseño, no implementado | 20 MB | 50 MB | riesgo de leak sin techo fijo | — | Footprint normal liviano; hay un issue abierto de memory leak |
+| Prometheus | implementado (006) | 300 MB | 900 MB | 2.0 GiB | `2g` — ajustado | ~3GB/millón de series; nuestra cardinalidad es baja (single-tenant, pocos targets) |
+| Grafana | implementado (006) | 100 MB | 250 MB | 1.5 GiB | `1.5g` — ajustado | Alto crece con paneles/alertas/usuarios concurrentes — improbable en single-tenant, pero sin techo duro |
+| cAdvisor | implementado (006) | 50 MB | 150 MB | 300 MB | `300m` — resuelto | Límites recomendados típicos (128-300Mi) |
+| node-exporter | implementado (006) | 20 MB | 70 MB | 200 MB | `200m` — resuelto | Liviano, límites típicos 100-200Mi |
+| postgres-exporter-prod | implementado (006) | 10 MB | 25 MB | riesgo de leak sin techo fijo | `64m` | Footprint normal es "decenas de MB"; hay issues reales de memory leak con queries específicas — el `mem_limit` lo contiene (muere por OOM, no se come RAM del host) |
+| Loki | implementado (006) | 300 MB | 1.5 GiB | 4+ GiB | `2g` — contiene el Normal, no el Alto | Modo monolítico (nuestro caso, un solo nodo) estabiliza ~1.5GB; queries no optimizadas pueden disparar a 4GB+ y matar el contenedor por OOM (aceptado, ver PLAN-006 Risks) |
+| Promtail | implementado (006) | 20 MB | 50 MB | riesgo de leak sin techo fijo | `128m` | Footprint normal liviano; hay un issue abierto de memory leak — el `mem_limit` lo contiene |
 | Odoo staging (1 worker, `hard=682MiB`) | implementado (005) | 0.4 GiB | 0.7 GiB | 1.17 GiB | `2g` — holgado | Mismo mecanismo que prod, un solo worker. Efímera: solo pesa en el peak (ventana de ~3h), ya presupuestado abajo |
 | Postgres staging (`shared_buffers=512MiB`) | implementado (005) | 0.55 GiB | 0.8 GiB | 1.4 GiB | `1.5g` — holgado | Mismo mecanismo que prod, pool más chico (`pool_size=5`) |
 | PgBouncer staging | implementado (005) | 5 MB | 20 MB | 50 MB | `128m` — muy holgado | Igual que PgBouncer prod |
@@ -103,9 +103,9 @@ Cada servicio varía con su propia carga, no solo con si staging está prendida 
 
 **Totales recalculados (columna Normal):**
 
-| Escenario | Solo lo implementado hoy (prod + edge + backup) | + staging + monitoring (cuando se construyan) |
+| Escenario | prod + edge + backup + monitoring | + staging (ventana ~3h) |
 |---|---|---|
-| Baseline (staging apagada) | ~6.2 GiB | ~10.1 GiB |
+| Baseline (staging apagada) | ~10.1 GiB | — |
 | Peak (staging activa) | — | ~11.7 GiB |
 
 Los totales bajan un poco respecto del presupuesto anterior (~11.0/~13.1 GiB): el Odoo prod "Normal" real (4.0 GiB) es más bajo que el número que se venía usando (que en realidad describía el escenario Alto, ~6.5 GiB) — pero **Loki solo, en operación normal, es ~1.5 GiB**, casi 4x el ~0.4 GiB que se le asignaba combinado con Promtail. Los dos desvíos iban en direcciones opuestas y se compensaban en el total general, ocultando que las líneas individuales estaban mal calibradas. Margen resultante: ~7.8 GiB en baseline, ~2.3 GiB en peak (staging activa), sin contar el colchón de 4 GiB de swap.

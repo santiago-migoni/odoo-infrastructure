@@ -4,7 +4,6 @@ Ideas, deferred work, and future features not yet turned into a spec. Ordered by
 
 ## P0 — Critical
 
-- [ ] B009 Stack `monitoring` — Prometheus + Grafana + cAdvisor + node-exporter + postgres-exporter, logs centralizados con Loki + Promtail (noted 2026-07-12, from docs/features.md)
 - [ ] B010 Makefile + CI/CD — Makefile como única interfaz operativa (`<stack>-<service>-<action>`), GitHub Actions con runner self-hosted, deploys automáticos a staging tras lint+tests, deploys a prod siempre manuales con aprobación (noted 2026-07-12, from docs/features.md)
 
 ## P1 — High
