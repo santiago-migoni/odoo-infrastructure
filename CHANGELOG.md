@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Stack `staging` efímero (`005-staging`) — réplica fiel de prod a menor escala (1 worker, sin `dev_mode`, mismo split de longpolling), en su propia red aislada (`staging-net`; solo Traefik la puentea, staging no alcanza la `db` de prod). Se levanta on-demand restaurando el último backup de prod desde el repo restic local y anonimizándolo **antes** de arrancar Odoo (orden crítico bajo `set -e`: mail servers off, emails/passwords/payment/webhooks/crons neutralizados, atómico vía `psql --single-transaction`), expuesto en `staging.miempresa.com`, con teardown duro auto-forzado a ~3h (timer transiente de systemd + servicio oneshot de boot). `postgres-exporter` vive en el stack de staging (nace/muere con él). Incluye dos correcciones halladas en testing real (`restic restore --no-lock` para repo `:ro`, `chown 100:101` del filestore restaurado). Verificado end-to-end en Docker local; validación de systemd diferida al deploy en Linux real.
+
+### Changed
+- `edoburu/pgbouncer` pineado a `1.22.1-p0` en los stacks `prod` y `staging` (antes sin tag = `latest` implícito) — reproducibilidad.
+
 ## [0.4.0] - 2026-07-12
 
 ### Changed

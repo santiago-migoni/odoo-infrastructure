@@ -71,25 +71,46 @@ Reserva ~2-3 GiB para SO + Docker + Traefik + cloudflared + PgBouncer + monitori
 - **Alertas:** Grafana Alerting (sin Alertmanager separado) → Telegram/email. Dispara con: RAM del host por encima de umbral, contenedor caído, Postgres sin conexiones disponibles.
 - **Logs centralizados:** Loki + Promtail (integrado a Grafana).
 
-### Presupuesto de RAM (estimado, 14 GiB totales) — final, tras staging efímera + ajuste de memory limits
-Dos escenarios (staging efímera: apagada la mayor parte del tiempo, activa solo en ventanas de 3h — ver "Refresh de staging"):
+### Presupuesto de RAM (estimado, 14 GiB totales) — con datos reales por servicio, 3 escenarios
 
-| Componente | Baseline (staging apagada) | Peak (staging activa, ventana de 3h) |
+Cada servicio varía con su propia carga, no solo con si staging está prendida o no. La tabla de abajo da **Bajo / Normal / Alto** por servicio, contrastado — donde ya existe el stack real — contra el `mem_limit` que Docker aplica hoy. "Diseño, no implementado" marca los servicios de `staging`/`monitoring` (features 5/6 del roadmap, todavía no construidas): esos números son insumo para elegir su `mem_limit` cuando se implementen, no una medición de algo corriendo hoy.
+
+| Servicio | Estado | Bajo | Normal | Alto | `mem_limit` real | Nota |
+|---|---|---|---|---|---|---|
+| Odoo prod (3 workers, `hard=2048MiB` c/u) | implementado | 1.5 GiB | 4.0 GiB | 6.5 GiB | `8g` — holgado | El límite de Odoo es *por worker*, no total; Alto = los 3 workers simultáneamente en su hard limit |
+| Postgres prod (`shared_buffers=1.5GiB` fijo) | implementado | 1.6 GiB | 2.0 GiB | 4.3 GiB | `4.5g` — resuelto (B002) | `shared_buffers` es una reserva fija; Alto = `work_mem` multiplicado por conexiones concurrentes en el peor caso, acotado por `pool_size=20` de PgBouncer (no por `max_connections=100`). `mem_limit` subido de 2.5g a 4.5g — es un techo, no una reserva, así que no cuesta RAM en operación normal |
+| PgBouncer prod | implementado | 5 MB | 20 MB | 50 MB | `256m` — muy holgado | ~2KB/conexión + base, footprint casi plano a esta escala |
+| Traefik | implementado | 30 MB | 70 MB | 450 MB | `512m` — resuelto (B003) | Alto confirmado bajo tráfico real de 140Mbit/s; hay issues de memory leak reportados que pueden ir más alto todavía — vigilar una vez exista `monitoring` |
+| cloudflared | implementado | 40 MB* | 80 MB* | 200 MB* | `256m` — resuelto (B003) | *Sin cifra oficial de Cloudflare — estimación por analogía con binarios Go de perfil similar, no confirmada por fuente |
+| Backup (`restic`, efímero) | implementado (004) | 100 MB | 400 MB | sin techo fijo (hasta ~30GB reportado en repos de 1-2TB) | `1g` | Nuestro repo es chico hoy; el índice crece con el tamaño del repo sin poder acotarse por config. El `mem_limit` sí lo contiene: si algún día no alcanza, el contenedor muere por OOM (falla ese backup), no se come RAM del host |
+| Prometheus | diseño, no implementado | 300 MB | 900 MB | 2.0 GiB | — (a definir en `docker-compose.monitoring.yml`) | ~3GB/millón de series; nuestra cardinalidad es baja (single-tenant, pocos targets) |
+| Grafana | diseño, no implementado | 100 MB | 250 MB | 1.5 GiB | — | Alto crece con paneles/alertas/usuarios concurrentes — improbable en single-tenant, pero sin techo duro |
+| cAdvisor | diseño, no implementado | 50 MB | 150 MB | 300 MB | — | Límites recomendados típicos (128-300Mi) |
+| node-exporter | diseño, no implementado | 20 MB | 70 MB | 200 MB | — | Liviano, límites típicos 100-200Mi |
+| postgres-exporter-prod | diseño, no implementado | 10 MB | 25 MB | riesgo de leak sin techo fijo | — | Footprint normal es "decenas de MB"; hay issues reales de memory leak con queries específicas — mitigar con `mem_limit` + restart periódico si se detecta crecimiento sostenido |
+| Loki | diseño, no implementado | 300 MB | 1.5 GiB | 4+ GiB | — | Modo monolítico (nuestro caso, un solo nodo) estabiliza ~1.5GB; queries no optimizadas pueden disparar a 4GB+ |
+| Promtail | diseño, no implementado | 20 MB | 50 MB | riesgo de leak sin techo fijo | — | Footprint normal liviano; hay un issue abierto de memory leak |
+| Odoo staging (1 worker, `hard=682MiB`) | implementado (005) | 0.4 GiB | 0.7 GiB | 1.17 GiB | `2g` — holgado | Mismo mecanismo que prod, un solo worker. Efímera: solo pesa en el peak (ventana de ~3h), ya presupuestado abajo |
+| Postgres staging (`shared_buffers=512MiB`) | implementado (005) | 0.55 GiB | 0.8 GiB | 1.4 GiB | `1.5g` — holgado | Mismo mecanismo que prod, pool más chico (`pool_size=5`) |
+| PgBouncer staging | implementado (005) | 5 MB | 20 MB | 50 MB | `128m` — muy holgado | Igual que PgBouncer prod |
+| postgres-exporter-staging | implementado (005) | 10 MB | 25 MB | riesgo de leak sin techo fijo | `64m` | Igual que postgres-exporter-prod; el `mem_limit` lo contiene si hay leak (muere por OOM, no se come RAM del host). Vive en `docker-compose.staging.yml`, nace/muere con staging |
+| Runner GitHub Actions + SO | host | 0.6 GiB | 1.0 GiB | 1.5 GiB | — | Overhead genérico de host + runner, no un producto puntual con fuente propia |
+
+**Dos hallazgos, ya resueltos:**
+
+1. **Postgres prod** — `mem_limit` subido de 2.5g a **4.5g** (B002). El riesgo era que `work_mem` multiplicado por conexiones concurrentes (acotado por `pool_size=20` de PgBouncer, no por `max_connections=100`) podía superar el límite viejo y matar el contenedor por OOM en medio de una query — mecanismo documentado de `work_mem` en PostgreSQL, no hipotético lejano. 4.5g deja margen sobre el Alto estimado (~4.3GiB).
+2. **Traefik/cloudflared** — `mem_limit` subido de 128m a **512m** (Traefik) y **256m** (cloudflared) (B003). El Alto confirmado de Traefik (450MB a 140Mbit/s) superaba el límite viejo por 3.5x.
+
+**Totales recalculados (columna Normal):**
+
+| Escenario | Solo lo implementado hoy (prod + edge + backup) | + staging + monitoring (cuando se construyan) |
 |---|---|---|
-| Odoo prod (3 workers, `hard=2048 MiB` + overhead) | ~6.5 GiB | ~6.5 GiB |
-| Postgres prod (`shared_buffers` 1.5 GiB + overhead) | ~2.0 GiB | ~2.0 GiB |
-| PgBouncer prod, Traefik, cloudflared | ~0.2 GiB | ~0.2 GiB |
-| Prometheus + Grafana + cAdvisor + node-exporter + postgres-exporter-prod | ~0.9 GiB | ~0.9 GiB |
-| Loki + Promtail | ~0.4 GiB | ~0.4 GiB |
-| Runner GitHub Actions + SO | ~1.0 GiB | ~1.0 GiB |
-| Odoo staging (1 worker, `hard=682 MiB` + overhead) | — | ~1.17 GiB |
-| Postgres staging (`shared_buffers` 512 MiB + overhead) | — | ~0.8 GiB |
-| PgBouncer staging, postgres-exporter-staging | — | ~0.15 GiB |
-| **Total estimado (peor caso)** | **~11.0 GiB** | **~13.1 GiB** |
+| Baseline (staging apagada) | ~6.2 GiB | ~10.1 GiB |
+| Peak (staging activa) | — | ~11.7 GiB |
 
-**Margen real: ~3.0 GiB en baseline (la mayor parte del tiempo), ~0.9 GiB en peak** (staging activa + los 3 workers de prod tocando su techo simultáneamente — escenario poco frecuente, ya que staging es de uso individual y puntual). Sumado a los 4 GiB de swap del servidor como colchón adicional ante ese peor caso puntual. `postgres-exporter-staging` conviene definirlo en `docker-compose.staging.yml` (no en el stack de monitoring permanente), así arranca y muere junto con staging en vez de quedar como target de Prometheus fallando cuando staging está abajo.
+Los totales bajan un poco respecto del presupuesto anterior (~11.0/~13.1 GiB): el Odoo prod "Normal" real (4.0 GiB) es más bajo que el número que se venía usando (que en realidad describía el escenario Alto, ~6.5 GiB) — pero **Loki solo, en operación normal, es ~1.5 GiB**, casi 4x el ~0.4 GiB que se le asignaba combinado con Promtail. Los dos desvíos iban en direcciones opuestas y se compensaban en el total general, ocultando que las líneas individuales estaban mal calibradas. Margen resultante: ~7.8 GiB en baseline, ~2.3 GiB en peak (staging activa), sin contar el colchón de 4 GiB de swap.
 
-**Contenedor de backup (efímero, `mem_limit: 1g`):** no figura como línea fija en la tabla porque corre solo unos minutos por día (systemd timer diario, medianoche) y su costo de RAM es ≈0 fuera de esa ventana. La feature `004-backup-restic` subió su techo de 512m a 1g (restic mantiene índice en memoria y `prune` lo reconstruye). Reconciliación contra el presupuesto: en **baseline** (staging apagada, el caso normal a medianoche) hay ~3.0 GiB de margen, así que 1g entra holgado. El único borde ajustado es el **solape backup×staging** (alguien con staging levantada justo a medianoche): peak ~13.1 GiB + 1.0 GiB = ~14.1 GiB, apenas sobre los 14 GiB físicos — absorbido por los 4 GiB de swap, y de todas formas improbable (staging es on-demand y puntual, el timer corre a una hora de baja actividad). No se toma ninguna acción de sizing extra; si en operación real se observa presión de memoria en ese solape, la palanca es mover el `OnCalendar` del timer a una hora donde staging nunca esté activa.
+**Fuentes:** [Odoo — cálculo de workers](https://www.odoo.com/forum/help-1/odoo-worker-number-calculation-for-multiprocessing-172597), [Odoo — GH #107799 limit_memory](https://github.com/odoo/odoo/issues/107799), [PostgreSQL — tuning shared_buffers/work_mem](https://oneuptime.com/blog/post/2026-01-25-postgresql-shared-buffers-work-mem-tuning/view), [PgBouncer features](https://www.pgbouncer.org/features.html), [Traefik — recomendaciones RAM/CPU](https://community.traefik.io/t/traefik-ram-and-cpu-recommendations-for-k8s/2756), [restic — memoria alta en backup/prune](https://forum.restic.net/t/high-memory-usage-on-backup-prune-and-check/1253), [restic — GH #2519](https://github.com/restic/restic/issues/2519), [Prometheus — RAM por cardinalidad](https://www.robustperception.io/how-much-ram-does-prometheus-2-x-need-for-cardinality-and-ingestion/), [Grafana — memoria](https://last9.io/blog/grafana-memory-usage/), [cAdvisor/node-exporter — límites típicos](https://www.cloudforecast.io/blog/cadvisor-and-kubernetes-monitoring-guide/), [postgres_exporter — memoria](https://github.com/prometheus-community/postgres_exporter/issues/694), [Loki — RAM en instalación chica](https://community.grafana.com/t/optimizing-ram-for-small-installation/120459), [Promtail — leak GH #8054](https://github.com/grafana/loki/issues/8054).
 
 ### Deploy de actualizaciones de módulos
 - Update selectivo automatizado: el pipeline detecta qué carpetas de `addons/` cambiaron desde el último deploy y corre `odoo -u <módulos_modificados> --stop-after-init` antes de reiniciar los workers. Sin `-u all` (más lento y arriesgado en prod real).
