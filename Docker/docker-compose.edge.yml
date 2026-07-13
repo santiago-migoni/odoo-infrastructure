@@ -1,9 +1,10 @@
+name: odoo-infrastructure-edge
 services:
   traefik:
     image: traefik:v3.7.7
     volumes:
-      - ./config/traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./config/traefik-dynamic.yml:/etc/traefik/traefik-dynamic.yml:ro
+      - ../config/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ../config/traefik-dynamic.yml:/etc/traefik/traefik-dynamic.yml:ro
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--ping"]
       interval: 10s
@@ -20,7 +21,7 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:2026.7.1
     command: tunnel run
-    env_file: .env.edge
+    env_file: ../env/.env.edge
     depends_on:
       traefik:
         condition: service_healthy

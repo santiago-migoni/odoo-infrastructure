@@ -1,7 +1,7 @@
-docker-compose.override.yml
-.env.prod
-.env.staging
-.env.edge
-.env.backup
-.env.monitoring
+Docker/docker-compose.override.yml
+env/.env.prod
+env/.env.staging
+env/.env.edge
+env/.env.backup
+env/.env.monitoring
 .DS_Store

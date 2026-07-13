@@ -1,7 +1,8 @@
+name: odoo-infrastructure-staging
 services:
   db:
     image: postgres:16-alpine
-    env_file: .env.staging
+    env_file: ../env/.env.staging
     environment:
       PGDATA: /var/lib/postgresql/data/pgdata
       POSTGRES_DB: odoo_staging
@@ -27,7 +28,7 @@ services:
 
   pgbouncer:
     image: edoburu/pgbouncer:1.22.1-p0
-    env_file: .env.staging
+    env_file: ../env/.env.staging
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -51,14 +52,16 @@ services:
       - staging
 
   odoo-staging:
-    build: .
-    env_file: .env.staging
+    build:
+      context: ..
+      dockerfile: Docker/Dockerfile
+    env_file: ../env/.env.staging
     environment:
       HOST: pgbouncer
       PORT: 6432
     volumes:
       - odoo-data-staging:/var/lib/odoo
-      - ./config/odoo-staging.conf:/etc/odoo/odoo.conf:ro
+      - ../config/odoo-staging.conf:/etc/odoo/odoo.conf:ro
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -75,7 +78,7 @@ services:
 
   postgres-exporter:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
-    env_file: .env.staging
+    env_file: ../env/.env.staging
     depends_on:
       db:
         condition: service_healthy

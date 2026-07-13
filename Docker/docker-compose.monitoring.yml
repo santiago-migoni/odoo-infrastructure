@@ -1,3 +1,4 @@
+name: odoo-infrastructure-monitoring
 services:
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -6,7 +7,7 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=15d
     volumes:
-      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     restart: unless-stopped
     mem_limit: 2g
@@ -17,9 +18,9 @@ services:
 
   grafana:
     image: grafana/grafana:11.4.0
-    env_file: .env.monitoring
+    env_file: ../env/.env.monitoring
     volumes:
-      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../config/grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus
@@ -34,7 +35,7 @@ services:
     image: grafana/loki:3.3.2
     command: -config.file=/etc/loki/loki-config.yml
     volumes:
-      - ./config/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - ../config/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
     restart: unless-stopped
     mem_limit: 2g
@@ -46,7 +47,7 @@ services:
     image: grafana/promtail:3.3.2
     command: -config.file=/etc/promtail/promtail-config.yml
     volumes:
-      - ./config/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - ../config/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - promtail-positions:/tmp/positions
     depends_on:
@@ -85,7 +86,7 @@ services:
 
   postgres-exporter-prod:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
-    env_file: .env.monitoring
+    env_file: ../env/.env.monitoring
     restart: unless-stopped
     mem_limit: 64m
     cpus: 0.25

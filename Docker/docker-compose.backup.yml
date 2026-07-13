@@ -1,9 +1,10 @@
+name: odoo-infrastructure-backup
 services:
   backup:
     build:
-      context: .
-      dockerfile: Dockerfile.backup
-    env_file: .env.backup
+      context: ..
+      dockerfile: Docker/Dockerfile.backup
+    env_file: ../env/.env.backup
     volumes:
       - odoo-data:/filestore:ro
       - /srv/odoo-backups:/backups

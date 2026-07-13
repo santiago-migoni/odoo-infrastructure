@@ -26,7 +26,7 @@ docker volume create odoo-data
 ## 2. Build de la imagen
 
 ```bash
-docker build -t odoo-prod:$(git rev-parse --short HEAD) .
+docker build -f Docker/Dockerfile -t odoo-prod:$(git rev-parse --short HEAD) .
 ```
 
 Verificar que quedó etiquetada por commit y corre como `odoo` (no root):
@@ -38,16 +38,16 @@ docker inspect --format '{{.Config.User}}' odoo-prod:$(git rev-parse --short HEA
 ## 3. Stack de producción
 
 ```bash
-cp .env.prod.example .env.prod   # completar con credenciales reales, nunca commitear
-docker compose -f docker-compose.prod.yml up -d
-docker compose -f docker-compose.prod.yml ps   # confirmar que los 3 servicios están healthy
+cp env/.env.prod.example env/.env.prod   # completar con credenciales reales, nunca commitear
+docker compose -f Docker/docker-compose.prod.yml up -d
+docker compose -f Docker/docker-compose.prod.yml ps   # confirmar que los 3 servicios están healthy
 ```
 
 Primera vez (base vacía): inicializar con el módulo `base`:
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm odoo odoo -d odoo -i base --stop-after-init
-docker compose -f docker-compose.prod.yml restart odoo
+docker compose -f Docker/docker-compose.prod.yml run --rm odoo odoo -d odoo -i base --stop-after-init
+docker compose -f Docker/docker-compose.prod.yml restart odoo
 ```
 
 ## 4. Stack `edge` (Traefik + Cloudflare Tunnel)
@@ -70,11 +70,11 @@ sed -i "s/odoo.miempresa.com/<tu-hostname-real>/g" config/traefik-dynamic.yml
 Levantar:
 
 ```bash
-cp .env.edge.example .env.edge
-# En .env.edge: TUNNEL_TOKEN=<el token del paso anterior>
-docker compose -f docker-compose.edge.yml up -d
-docker compose -f docker-compose.edge.yml ps   # traefik y cloudflared, ambos healthy
-docker compose -f docker-compose.edge.yml logs cloudflared --tail 20   # confirmar "Registered tunnel connection", sin errores de token
+cp env/.env.edge.example env/.env.edge
+# En env/.env.edge: TUNNEL_TOKEN=<el token del paso anterior>
+docker compose -f Docker/docker-compose.edge.yml up -d
+docker compose -f Docker/docker-compose.edge.yml ps   # traefik y cloudflared, ambos healthy
+docker compose -f Docker/docker-compose.edge.yml logs cloudflared --tail 20   # confirmar "Registered tunnel connection", sin errores de token
 ```
 
 Verificar **desde afuera del servidor** (tu laptop, no el servidor mismo — para probar el camino completo por internet, no solo la red interna):
@@ -100,18 +100,18 @@ Crear el bucket y las credenciales en el dashboard de Cloudflare — **Storage &
 Crear (una sola vez) el rol de Postgres de solo lectura:
 
 ```bash
-export BACKUP_DB_PASSWORD=elegir-un-password   # el mismo valor que va después en .env.backup
-./scripts/setup-backup-role.sh   # lee POSTGRES_USER de .env.prod automáticamente; seguro de re-correr
+export BACKUP_DB_PASSWORD=elegir-un-password   # el mismo valor que va después en env/.env.backup
+./scripts/setup-backup-role.sh   # lee POSTGRES_USER de env/.env.prod automáticamente; seguro de re-correr
 ```
 
 Preparar la carpeta de los repos y la config:
 
 ```bash
 sudo mkdir -p /srv/odoo-backups
-cp .env.backup.example .env.backup
+cp env/.env.backup.example env/.env.backup
 ```
 
-Completar `.env.backup` con los datos del bucket recién creado:
+Completar `env/.env.backup` con los datos del bucket recién creado:
 
 ```bash
 PGPASSWORD=<mismo valor que BACKUP_DB_PASSWORD>
@@ -125,20 +125,20 @@ AWS_SECRET_ACCESS_KEY=<Secret Access Key>
 Correr el backup (la primera corrida hace `restic init` de ambos repos automáticamente):
 
 ```bash
-docker compose -f docker-compose.backup.yml run --rm backup
+docker compose -f Docker/docker-compose.backup.yml run --rm backup
 ```
 
 Confirmar el snapshot en ambos repos:
 
 ```bash
-docker compose -f docker-compose.backup.yml run --rm --entrypoint restic backup -r /backups/restic snapshots
-# R2: mismo comando con -r "$RESTIC_REPOSITORY_R2" (requiere las AWS_* del .env.backup)
+docker compose -f Docker/docker-compose.backup.yml run --rm --entrypoint restic backup -r /backups/restic snapshots
+# R2: mismo comando con -r "$RESTIC_REPOSITORY_R2" (requiere las AWS_* del env/.env.backup)
 ```
 
 **Verificar el round-trip de restore** (confirma que el backup es genuinamente recuperable, no solo que el snapshot existe):
 
 ```bash
-docker compose -f docker-compose.backup.yml run --rm --entrypoint restic backup \
+docker compose -f Docker/docker-compose.backup.yml run --rm --entrypoint restic backup \
   -r /backups/restic restore latest --target /backups/restore-test
 # El dump plano queda en /srv/odoo-backups/restore-test/.../db.sql →
 # cargarlo en una DB vacía con psql confirma que la DB es recuperable;
@@ -175,21 +175,21 @@ sed -i "s/staging.miempresa.com/staging.<tu-dominio-real>/g" config/traefik-dyna
 Completar credenciales:
 
 ```bash
-cp .env.staging.example .env.staging   # completar con credenciales reales, nunca commitear
+cp env/.env.staging.example env/.env.staging   # completar con credenciales reales, nunca commitear
 ```
 
 Levantar staging (orden crítico automático: restore → anonimización → recién Odoo):
 
 ```bash
 ./scripts/staging-up.sh
-docker compose -f docker-compose.staging.yml ps   # los 4 servicios healthy
+docker compose -f Docker/docker-compose.staging.yml ps   # los 4 servicios healthy
 curl -s -o /dev/null -w "HTTP %{http_code}\n" https://staging.<tu-dominio-real>/web/health   # 200
 ```
 
 **Verificar la anonimización** (confirma que ningún dato real de cliente quedó expuesto):
 
 ```bash
-docker compose -f docker-compose.staging.yml exec -T db psql -U "$POSTGRES_USER" -d odoo_staging \
+docker compose -f Docker/docker-compose.staging.yml exec -T db psql -U "$POSTGRES_USER" -d odoo_staging \
   -c "SELECT count(*) FROM ir_mail_server WHERE active;"   # → 0
 ```
 
@@ -221,8 +221,8 @@ Stack siempre-arriba, en `odoo-shared` (sin publicar puertos). Recolecta métric
 Crear (una sola vez) el rol de Postgres de solo lectura para el exporter:
 
 ```bash
-export MONITORING_DB_PASSWORD=elegir-un-password   # el mismo valor que va después en .env.monitoring
-./scripts/setup-monitoring-role.sh   # lee POSTGRES_USER de .env.prod automáticamente; seguro de re-correr
+export MONITORING_DB_PASSWORD=elegir-un-password   # el mismo valor que va después en env/.env.monitoring
+./scripts/setup-monitoring-role.sh   # lee POSTGRES_USER de env/.env.prod automáticamente; seguro de re-correr
 ```
 
 Agregar la tercera ruta al mismo Tunnel de Cloudflare creado en el paso 4 — dashboard → el mismo tunnel → **Routes → Add route → Published application**:
@@ -247,39 +247,39 @@ sed -i "s/grafana.miempresa.com/grafana.<tu-dominio-real>/g" config/traefik-dyna
 Completar credenciales:
 
 ```bash
-cp .env.monitoring.example .env.monitoring   # completar con credenciales reales (el password de MONITORING_DB_PASSWORD va embebido en el DSN de DATA_SOURCE_NAME, no como variable separada; también SMTP y OPERATOR_EMAIL), nunca commitear
+cp env/.env.monitoring.example env/.env.monitoring   # completar con credenciales reales (el password de MONITORING_DB_PASSWORD va embebido en el DSN de DATA_SOURCE_NAME, no como variable separada; también SMTP y OPERATOR_EMAIL), nunca commitear
 ```
 
 Levantar:
 
 ```bash
-docker compose -f docker-compose.monitoring.yml up -d
-docker compose -f docker-compose.monitoring.yml ps   # los 7 servicios healthy/running
+docker compose -f Docker/docker-compose.monitoring.yml up -d
+docker compose -f Docker/docker-compose.monitoring.yml ps   # los 7 servicios healthy/running
 curl -s -o /dev/null -w "HTTP %{http_code}\n" https://grafana.<tu-dominio-real>   # 200 (o el desafío de Cloudflare Access)
 ```
 
 Confirmar que Prometheus tiene todos los targets arriba:
 
 ```bash
-docker compose -f docker-compose.monitoring.yml exec -T prometheus wget -qO- http://localhost:9090/api/v1/targets
+docker compose -f Docker/docker-compose.monitoring.yml exec -T prometheus wget -qO- http://localhost:9090/api/v1/targets
 ```
 
-Operación diaria (hasta que el Makefile lo envuelva — roadmap B010): `docker compose -f docker-compose.monitoring.yml up -d` / `down` / `logs -f <servicio>`.
+Operación diaria (hasta que el Makefile lo envuelva — roadmap B010): `docker compose -f Docker/docker-compose.monitoring.yml up -d` / `down` / `logs -f <servicio>`.
 
 ## 8. Desarme (solo si esto fue una prueba)
 
 ```bash
-docker compose -f docker-compose.monitoring.yml down -v
-docker compose -f docker-compose.staging.yml down -v
+docker compose -f Docker/docker-compose.monitoring.yml down -v
+docker compose -f Docker/docker-compose.staging.yml down -v
 sudo systemctl stop odoo-staging-teardown.timer 2>/dev/null || true
 sudo systemctl disable --now staging-teardown-boot.service 2>/dev/null || true
-docker compose -f docker-compose.backup.yml down
-docker compose -f docker-compose.edge.yml down
-docker compose -f docker-compose.prod.yml down -v
+docker compose -f Docker/docker-compose.backup.yml down
+docker compose -f Docker/docker-compose.edge.yml down
+docker compose -f Docker/docker-compose.prod.yml down -v
 docker network rm odoo-shared staging-net
 docker volume rm odoo-data
 sudo rm -rf /srv/odoo-backups
-rm -f .env.prod .env.edge .env.backup .env.staging .env.monitoring
+rm -f env/.env.prod env/.env.edge env/.env.backup env/.env.staging env/.env.monitoring
 git checkout config/traefik-dynamic.yml
 ```
 
