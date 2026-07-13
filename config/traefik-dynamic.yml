@@ -14,6 +14,20 @@ http:
       middlewares:
         - odoo-buffering
 
+    odoo-staging-ws:
+      rule: "Host(`staging.miempresa.com`) && PathPrefix(`/websocket`)"
+      priority: 100
+      service: odoo-staging-ws
+      middlewares:
+        - odoo-buffering
+
+    odoo-staging:
+      rule: "Host(`staging.miempresa.com`)"
+      priority: 1
+      service: odoo-staging
+      middlewares:
+        - odoo-buffering
+
   services:
     odoo-ws:
       loadBalancer:
@@ -24,6 +38,16 @@ http:
       loadBalancer:
         servers:
           - url: "http://odoo:8069"
+
+    odoo-staging-ws:
+      loadBalancer:
+        servers:
+          - url: "http://odoo-staging:8072"
+
+    odoo-staging:
+      loadBalancer:
+        servers:
+          - url: "http://odoo-staging:8069"
 
   middlewares:
     odoo-buffering:

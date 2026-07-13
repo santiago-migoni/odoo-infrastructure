@@ -9,14 +9,16 @@ Secuencia completa, de punta a punta:
 3. Stack de producción
 4. Stack `edge` (Traefik + Cloudflare Tunnel)
 5. Stack `backup` (Postgres RO + GPG + R2)
-6. Desarme (solo si esto fue una prueba, no un despliegue definitivo)
+6. Stack `staging` efímero (restore + anonimización + auto-teardown)
+7. Desarme (solo si esto fue una prueba, no un despliegue definitivo)
 
 ## 1. Red y volumen compartidos (bootstrap, una sola vez)
 
-`prod` y `edge` se conectan por una red Docker externa compartida, y `prod`/`backup` comparten el volumen del filestore de Odoo:
+`prod` y `edge` se conectan por una red Docker externa compartida, `prod`/`backup` comparten el volumen del filestore de Odoo, y `staging` vive en su propia red aislada (Traefik es el único que se une a ambas):
 
 ```bash
 docker network create odoo-shared
+docker network create staging-net
 docker volume create odoo-data
 ```
 
@@ -154,16 +156,76 @@ sudo systemctl enable --now odoo-backup.timer
 systemd-analyze verify systemd/odoo-backup.service systemd/odoo-backup.timer
 ```
 
-## 6. Desarme (solo si esto fue una prueba)
+## 6. Stack `staging` efímero (restore + anonimización + auto-teardown)
+
+Réplica fiel de prod a menor escala (mismo modelo multiproceso, sin `dev_mode`), en su propia red aislada — no comparte `odoo-shared` con prod. Se levanta on-demand, restaura el último backup de prod y lo anonimiza **antes** de arrancar Odoo, y se autodestruye a las ~3h.
+
+Agregar la segunda ruta al mismo Tunnel de Cloudflare creado en el paso 4 — dashboard → el mismo tunnel → **Routes → Add route → Published application**:
+
+1. **Subdomain** `staging`, mismo **Domain** que prod, **Path** vacío.
+2. **Service URL**: `http://traefik:80` (igual que prod — Traefik distingue por `Host`, no por Tunnel).
+
+Igualar el hostname en la config de Traefik:
 
 ```bash
+sed -i "s/staging.miempresa.com/staging.<tu-dominio-real>/g" config/traefik-dynamic.yml
+```
+
+Completar credenciales:
+
+```bash
+cp .env.staging.example .env.staging   # completar con credenciales reales, nunca commitear
+```
+
+Levantar staging (orden crítico automático: restore → anonimización → recién Odoo):
+
+```bash
+./scripts/staging-up.sh
+docker compose -f docker-compose.staging.yml ps   # los 4 servicios healthy
+curl -s -o /dev/null -w "HTTP %{http_code}\n" https://staging.<tu-dominio-real>/web/health   # 200
+```
+
+**Verificar la anonimización** (confirma que ningún dato real de cliente quedó expuesto):
+
+```bash
+docker compose -f docker-compose.staging.yml exec -T db psql -U "$POSTGRES_USER" -d odoo_staging \
+  -c "SELECT count(*) FROM ir_mail_server WHERE active;"   # → 0
+```
+
+Extender la sesión ~3h más si hace falta:
+
+```bash
+./scripts/staging-extend.sh
+```
+
+Bajar manualmente antes de que el timer la fuerce (o pedir un ciclo nuevo — `staging-up.sh` hace teardown + fresh restore si staging ya está activa):
+
+```bash
+./scripts/staging-down.sh
+```
+
+Instalar el teardown de boot (para que un reinicio del server nunca deje staging colgada comiendo RAM):
+
+```bash
+sudo cp systemd/staging-teardown-boot.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable staging-teardown-boot.service
+systemd-analyze verify systemd/staging-teardown-boot.service
+```
+
+## 7. Desarme (solo si esto fue una prueba)
+
+```bash
+docker compose -f docker-compose.staging.yml down -v
+sudo systemctl stop odoo-staging-teardown.timer 2>/dev/null || true
+sudo systemctl disable --now staging-teardown-boot.service 2>/dev/null || true
 docker compose -f docker-compose.backup.yml down
 docker compose -f docker-compose.edge.yml down
 docker compose -f docker-compose.prod.yml down -v
-docker network rm odoo-shared
+docker network rm odoo-shared staging-net
 docker volume rm odoo-data
 sudo rm -rf /srv/odoo-backups
-rm -f .env.prod .env.edge .env.backup
+rm -f .env.prod .env.edge .env.backup .env.staging
 git checkout config/traefik-dynamic.yml
 ```
 

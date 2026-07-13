@@ -1,15 +1,16 @@
 services:
   db:
     image: postgres:16-alpine
-    env_file: .env.prod
+    env_file: .env.staging
     environment:
       PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_DB: odoo_staging
       POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US"
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data-staging:/var/lib/postgresql/data
     command: >
       postgres
-      -c shared_buffers=1536MB
+      -c shared_buffers=512MB
       -c work_mem=64MB
       -c max_connections=100
       -c random_page_cost=1.1
@@ -19,21 +20,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    restart: unless-stopped
-    mem_limit: 4.5g
-    cpus: 2.0
+    mem_limit: 1.5g
+    cpus: 1.0
     networks:
-      - internal
+      - staging
 
   pgbouncer:
     image: edoburu/pgbouncer:1.22.1-p0
-    env_file: .env.prod
+    env_file: .env.staging
     environment:
       DB_HOST: db
       DB_PORT: 5432
       POOL_MODE: transaction
-      DEFAULT_POOL_SIZE: 20
-      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 5
+      MAX_CLIENT_CONN: 50
       LISTEN_PORT: 6432
       AUTH_TYPE: scram-sha-256
     depends_on:
@@ -45,21 +45,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    restart: unless-stopped
-    mem_limit: 256m
-    cpus: 0.5
+    mem_limit: 128m
+    cpus: 0.25
     networks:
-      - internal
+      - staging
 
-  odoo:
+  odoo-staging:
     build: .
-    env_file: .env.prod
+    env_file: .env.staging
     environment:
       HOST: pgbouncer
       PORT: 6432
     volumes:
-      - odoo-data:/var/lib/odoo
-      - ./config/odoo.conf:/etc/odoo/odoo.conf:ro
+      - odoo-data-staging:/var/lib/odoo
+      - ./config/odoo-staging.conf:/etc/odoo/odoo.conf:ro
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -69,24 +68,29 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    restart: unless-stopped
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "5"
-    mem_limit: 8g
-    cpus: 4.0
+    mem_limit: 2g
+    cpus: 1.5
     networks:
-      - internal
+      - staging
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    env_file: .env.staging
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 64m
+    cpus: 0.25
+    networks:
+      - staging
 
 networks:
-  internal:
+  staging:
     external: true
-    name: odoo-shared
+    name: staging-net
 
 volumes:
-  db-data:
-  odoo-data:
-    external: true
-    name: odoo-data
+  db-data-staging:
+    name: db-data-staging
+  odoo-data-staging:
+    name: odoo-data-staging

@@ -11,10 +11,11 @@ services:
       retries: 5
       start_period: 15s
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: 512m
     cpus: 0.5
     networks:
       - internal
+      - staging
 
   cloudflared:
     image: cloudflare/cloudflared:2026.7.1
@@ -24,7 +25,7 @@ services:
       traefik:
         condition: service_healthy
     restart: unless-stopped
-    mem_limit: 128m
+    mem_limit: 256m
     cpus: 0.5
     networks:
       - internal
@@ -33,3 +34,6 @@ networks:
   internal:
     external: true
     name: odoo-shared
+  staging:
+    external: true
+    name: staging-net
