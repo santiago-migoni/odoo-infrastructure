@@ -60,10 +60,10 @@ Reserva ~2-3 GiB para SO + Docker + Traefik + cloudflared + PgBouncer + monitori
 - **Ejecución:** contenedor efímero dedicado, no script en el host — ver "Contenedor de backup" más abajo.
 
 ### Contenedor de backup
-- `Docker/docker-compose.backup.yml` — 5to stack, un solo servicio (`backup`), efímero: no queda corriendo, se invoca y termina.
+- `docker/docker-compose.backup.yml` — 5to stack, un solo servicio (`backup`), efímero: no queda corriendo, se invoca y termina.
 - Imagen propia: `FROM postgres:19-alpine` (mismo binario `pg_dump` que la versión de Postgres en uso) + `rclone` + `gnupg`.
 - Se conecta a `db` por la red interna de Docker (mismo mecanismo que el resto — sin publicar puertos), y monta el volumen de filestore de Odoo **read-only** para el `tar`.
-- Disparo: systemd timer diario → `docker compose -f Docker/docker-compose.backup.yml run --rm backup` (equivalente al target `prod-backup-run` del Makefile). Costo de RAM ≈ 0 fuera de la ventana en que corre (minutos), no un daemon permanente.
+- Disparo: systemd timer diario → `docker compose -f docker/docker-compose.backup.yml run --rm backup` (equivalente al target `prod-backup-run` del Makefile). Costo de RAM ≈ 0 fuera de la ventana en que corre (minutos), no un daemon permanente.
 
 ### Monitoring
 - **Stack:** Prometheus + Grafana (elegido sobre la alternativa liviana Uptime Kuma). Ver "Presupuesto de RAM" más abajo — con staging efímera el margen es cómodo, ya no hace falta recortar este stack por RAM.
@@ -93,7 +93,7 @@ Cada servicio varía con su propia carga, no solo con si staging está prendida 
 | Odoo staging (1 worker, `hard=682MiB`) | implementado (005) | 0.4 GiB | 0.7 GiB | 1.17 GiB | `2g` — holgado | Mismo mecanismo que prod, un solo worker. Efímera: solo pesa en el peak (ventana de ~3h), ya presupuestado abajo |
 | Postgres staging (`shared_buffers=512MiB`) | implementado (005) | 0.55 GiB | 0.8 GiB | 1.4 GiB | `1.5g` — holgado | Mismo mecanismo que prod, pool más chico (`pool_size=5`) |
 | PgBouncer staging | implementado (005) | 5 MB | 20 MB | 50 MB | `128m` — muy holgado | Igual que PgBouncer prod |
-| postgres-exporter-staging | implementado (005) | 10 MB | 25 MB | riesgo de leak sin techo fijo | `64m` | Igual que postgres-exporter-prod; el `mem_limit` lo contiene si hay leak (muere por OOM, no se come RAM del host). Vive en `Docker/docker-compose.staging.yml`, nace/muere con staging |
+| postgres-exporter-staging | implementado (005) | 10 MB | 25 MB | riesgo de leak sin techo fijo | `64m` | Igual que postgres-exporter-prod; el `mem_limit` lo contiene si hay leak (muere por OOM, no se come RAM del host). Vive en `docker/docker-compose.staging.yml`, nace/muere con staging |
 | Runner GitHub Actions + SO | host | 0.6 GiB | 1.0 GiB | 1.5 GiB | — | Overhead genérico de host + runner, no un producto puntual con fuente propia |
 
 **Dos hallazgos, ya resueltos:**
@@ -182,31 +182,32 @@ Targets explícitos, con convención de nombre **`<stack>-<service>-<action>`** 
 
 | stack | archivo | servicios |
 |---|---|---|
-| `prod` | `Docker/docker-compose.prod.yml` | `odoo`, `db`, `pgbouncer` |
-| `staging` | `Docker/docker-compose.staging.yml` | `odoo`, `db`, `pgbouncer`, `postgres-exporter` (nace/muere con staging, no vive en `monitoring`) |
-| `edge` | `Docker/docker-compose.edge.yml` | `traefik`, `cloudflared` |
-| `monitoring` | `Docker/docker-compose.monitoring.yml` | `prometheus`, `grafana`, `loki`, `promtail`, `cadvisor`, `node-exporter`, `postgres-exporter-prod` |
-| `backup` | `Docker/docker-compose.backup.yml` | `backup` (servicio único, efímero — ver "Contenedor de backup") |
+| `prod` | `docker/docker-compose.prod.yml` | `odoo`, `db`, `pgbouncer` |
+| `staging` | `docker/docker-compose.staging.yml` | `odoo`, `db`, `pgbouncer`, `postgres-exporter` (nace/muere con staging, no vive en `monitoring`) |
+| `edge` | `docker/docker-compose.edge.yml` | `traefik`, `cloudflared` |
+| `monitoring` | `docker/docker-compose.monitoring.yml` | `prometheus`, `grafana`, `loki`, `promtail`, `cadvisor`, `node-exporter`, `postgres-exporter-prod` |
+| `backup` | `docker/docker-compose.backup.yml` | `backup` (servicio único, efímero — ver "Contenedor de backup") |
 
-Acciones por servicio: `up`, `stop`, `restart`, `logs` (todos) · `rebuild` (solo `odoo`, único con build propio) · `pull` (solo servicios de imagen oficial) · `restore` (solo `db`, restaura DB+filestore juntos) · `run` (solo `backup`, contenedor efímero: `run --rm` en vez de `up -d`).
+Acciones por servicio: `up`, `stop`, `restart`, `logs` (todos, generados) · `rebuild` (solo `odoo`/`odoo-staging`, único con build propio, generados) · `pull` (solo servicios de imagen oficial, generados) · `run` (solo `backup`, especial: `run --rm` en vez de `up -d`) — implementado en `008-makefile` (`Makefile` en la raíz).
 
-Ejemplos:
+Ejemplos (targets reales del `Makefile`):
 
 ```makefile
-prod-odoo-up:            ; $(COMPOSE_PROD) up -d odoo
-prod-odoo-rebuild:       ; $(COMPOSE_PROD) build --no-cache odoo && $(COMPOSE_PROD) up -d odoo
-prod-db-restore:         ; ./scripts/restore.sh prod $(CONFIRM)   # ⚠️ exige CONFIRM=yes, disaster recovery únicamente
+prod-odoo-up:                    ; $(COMPOSE_PROD) up -d odoo
+prod-odoo-rebuild:                ; $(COMPOSE_PROD) build --no-cache odoo && $(COMPOSE_PROD) up -d odoo
+prod-db-restore:                  ; ./scripts/prod-db-restore.sh   # ⚠️ exige CONFIRM=yes; LOCAL=yes fuerza repo local (default R2, off-site)
 
-staging-db-restore:      ; ./scripts/restore.sh staging   # uso frecuente, sin CONFIRM
-staging-odoo-logs:       ; $(COMPOSE_STAGING) logs -f odoo
+staging-up:                       ; ./scripts/staging-up.sh   # ciclo completo: restore + anonimización + up
+staging-db-restore: staging-up    # alias — el "restore" de staging es siempre el ciclo completo, nunca parcial sin anonimizar
+staging-odoo-staging-logs:        ; $(COMPOSE_STAGING) logs -f odoo-staging
 
-edge-traefik-restart:    ; $(COMPOSE_EDGE) restart traefik
+edge-traefik-restart:             ; $(COMPOSE_EDGE) restart traefik
 
-monitoring-grafana-up:   ; $(COMPOSE_MONITORING) up -d grafana
+monitoring-grafana-up:            ; $(COMPOSE_MONITORING) up -d grafana
 
-backup-backup-run:       ; $(COMPOSE_BACKUP) run --rm backup   # disparado también por systemd timer diario
+backup-backup-run:                ; $(COMPOSE_BACKUP) run --rm backup   # disparado también por systemd timer diario
 ```
 
-Más targets compuestos a nivel stack completo (`prod-up`, `staging-down`, `deploy-prod`, `up-staging` con restore+timer de 3h, `extend-staging`, `backup`, `status`), siguiendo los flujos ya documentados en el resto del documento. El patrón se repite igual para cada combinación stack×servicio×acción de la tabla de arriba — no hace falta enumerarlas todas acá.
+Más targets compuestos a nivel stack completo (`prod-up`/`down`/`status`/`logs`, y el mismo cuarteto por stack — `staging-up`/`down` son los especiales, no el genérico crudo), siguiendo los flujos ya documentados en el resto del documento. El patrón se repite igual para cada combinación stack×servicio×acción de la tabla de arriba — `make help` lista la matriz completa, no hace falta enumerarla acá.
 
 ⚠️ `prod-db-restore` es destructivo sobre datos reales — el script exige `CONFIRM=yes` explícito además del target, para que no sea invocable por error.

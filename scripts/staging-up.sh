@@ -28,7 +28,7 @@ docker run --rm --network staging-net --env-file env/.env.staging \
   --entrypoint sh \
   odoo-restore-tools:local /restore-staging.sh
 
-echo "[staging-up] Anonimizando (psql --single-transaction, directo a db:5432)...)"
+echo "[staging-up] Anonimizando (psql --single-transaction, directo a db:5432)..."
 docker run --rm --network staging-net \
   -e PGPASSWORD="$POSTGRES_PASSWORD" \
   -v "$(pwd)/scripts/anonymize-staging.sql:/anonymize-staging.sql:ro" \

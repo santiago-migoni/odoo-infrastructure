@@ -1,6 +1,6 @@
 # Instalación
 
-Esta feature se opera con comandos `docker`/`docker compose` directos (el Makefile es una feature separada, más adelante).
+A partir de la feature `008-makefile`, el `Makefile` en la raíz es la interfaz operativa única — cada comando `docker`/`docker compose` de este documento tiene un target `make` equivalente (`make help` lista todos). Los comandos directos siguen documentados acá porque son lo que el target ejecuta por dentro; usar uno u otro da el mismo resultado.
 
 Secuencia completa, de punta a punta:
 
@@ -11,7 +11,8 @@ Secuencia completa, de punta a punta:
 5. Stack `backup` (Postgres RO + GPG + R2)
 6. Stack `staging` efímero (restore + anonimización + auto-teardown)
 7. Stack `monitoring` (Prometheus + Grafana + Loki + exporters)
-8. Desarme (solo si esto fue una prueba, no un despliegue definitivo)
+8. Restore de prod (disaster recovery)
+9. Desarme (solo si esto fue una prueba, no un despliegue definitivo)
 
 ## 1. Red y volumen compartidos (bootstrap, una sola vez)
 
@@ -264,9 +265,28 @@ Confirmar que Prometheus tiene todos los targets arriba:
 docker compose -f docker/docker-compose.monitoring.yml exec -T prometheus wget -qO- http://localhost:9090/api/v1/targets
 ```
 
-Operación diaria (hasta que el Makefile lo envuelva — roadmap B010): `docker compose -f docker/docker-compose.monitoring.yml up -d` / `down` / `logs -f <servicio>`.
+Operación diaria: `make monitoring-up` / `make monitoring-down` / `make monitoring-<servicio>-logs` (o los comandos `docker compose` de arriba, equivalentes).
 
-## 8. Desarme (solo si esto fue una prueba)
+## 8. Restore de prod (disaster recovery)
+
+Restaura la DB + filestore de producción desde un backup restic — **destructivo**, sobrescribe los datos actuales de prod. Reservado para recuperación tras pérdida/corrupción real, no para uso rutinario (eso es `staging-up`).
+
+Por defecto restaura desde **R2** (off-site — cubre el caso de haber perdido el server/disco entero, que es lo que justifica esta operación). Si el disco/repo local está intacto y se busca velocidad, se puede forzar con `LOCAL=yes`:
+
+```bash
+make prod-db-restore CONFIRM=yes            # restaura desde R2 (default)
+make prod-db-restore CONFIRM=yes LOCAL=yes  # restaura desde el repo local (más rápido, sin red)
+```
+
+Sin `CONFIRM=yes` exacto, el comando aborta sin tocar nada — no es invocable por error. El script para `odoo`+`pgbouncer` antes de restaurar, y solo los vuelve a levantar si el restore terminó bien; si falla, prod queda parado en vez de servir datos a medias.
+
+Equivalente directo (lo que el target ejecuta por dentro):
+
+```bash
+./scripts/prod-db-restore.sh
+```
+
+## 9. Desarme (solo si esto fue una prueba)
 
 ```bash
 docker compose -f docker/docker-compose.monitoring.yml down -v
