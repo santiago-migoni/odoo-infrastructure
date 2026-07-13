@@ -3,7 +3,7 @@ services:
   backup:
     build:
       context: ..
-      dockerfile: Docker/Dockerfile.backup
+      dockerfile: docker/Dockerfile.backup
     env_file: ../env/.env.backup
     volumes:
       - odoo-data:/filestore:ro

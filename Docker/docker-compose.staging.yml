@@ -54,7 +54,7 @@ services:
   odoo-staging:
     build:
       context: ..
-      dockerfile: Docker/Dockerfile
+      dockerfile: docker/Dockerfile
     env_file: ../env/.env.staging
     environment:
       HOST: pgbouncer

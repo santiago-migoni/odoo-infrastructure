@@ -26,7 +26,7 @@ docker volume create odoo-data
 ## 2. Build de la imagen
 
 ```bash
-docker build -f Docker/Dockerfile -t odoo-prod:$(git rev-parse --short HEAD) .
+docker build -f docker/Dockerfile -t odoo-prod:$(git rev-parse --short HEAD) .
 ```
 
 Verificar que quedó etiquetada por commit y corre como `odoo` (no root):
@@ -39,15 +39,15 @@ docker inspect --format '{{.Config.User}}' odoo-prod:$(git rev-parse --short HEA
 
 ```bash
 cp env/.env.prod.example env/.env.prod   # completar con credenciales reales, nunca commitear
-docker compose -f Docker/docker-compose.prod.yml up -d
-docker compose -f Docker/docker-compose.prod.yml ps   # confirmar que los 3 servicios están healthy
+docker compose -f docker/docker-compose.prod.yml up -d
+docker compose -f docker/docker-compose.prod.yml ps   # confirmar que los 3 servicios están healthy
 ```
 
 Primera vez (base vacía): inicializar con el módulo `base`:
 
 ```bash
-docker compose -f Docker/docker-compose.prod.yml run --rm odoo odoo -d odoo -i base --stop-after-init
-docker compose -f Docker/docker-compose.prod.yml restart odoo
+docker compose -f docker/docker-compose.prod.yml run --rm odoo odoo -d odoo -i base --stop-after-init
+docker compose -f docker/docker-compose.prod.yml restart odoo
 ```
 
 ## 4. Stack `edge` (Traefik + Cloudflare Tunnel)
@@ -72,9 +72,9 @@ Levantar:
 ```bash
 cp env/.env.edge.example env/.env.edge
 # En env/.env.edge: TUNNEL_TOKEN=<el token del paso anterior>
-docker compose -f Docker/docker-compose.edge.yml up -d
-docker compose -f Docker/docker-compose.edge.yml ps   # traefik y cloudflared, ambos healthy
-docker compose -f Docker/docker-compose.edge.yml logs cloudflared --tail 20   # confirmar "Registered tunnel connection", sin errores de token
+docker compose -f docker/docker-compose.edge.yml up -d
+docker compose -f docker/docker-compose.edge.yml ps   # traefik y cloudflared, ambos healthy
+docker compose -f docker/docker-compose.edge.yml logs cloudflared --tail 20   # confirmar "Registered tunnel connection", sin errores de token
 ```
 
 Verificar **desde afuera del servidor** (tu laptop, no el servidor mismo — para probar el camino completo por internet, no solo la red interna):
@@ -125,20 +125,20 @@ AWS_SECRET_ACCESS_KEY=<Secret Access Key>
 Correr el backup (la primera corrida hace `restic init` de ambos repos automáticamente):
 
 ```bash
-docker compose -f Docker/docker-compose.backup.yml run --rm backup
+docker compose -f docker/docker-compose.backup.yml run --rm backup
 ```
 
 Confirmar el snapshot en ambos repos:
 
 ```bash
-docker compose -f Docker/docker-compose.backup.yml run --rm --entrypoint restic backup -r /backups/restic snapshots
+docker compose -f docker/docker-compose.backup.yml run --rm --entrypoint restic backup -r /backups/restic snapshots
 # R2: mismo comando con -r "$RESTIC_REPOSITORY_R2" (requiere las AWS_* del env/.env.backup)
 ```
 
 **Verificar el round-trip de restore** (confirma que el backup es genuinamente recuperable, no solo que el snapshot existe):
 
 ```bash
-docker compose -f Docker/docker-compose.backup.yml run --rm --entrypoint restic backup \
+docker compose -f docker/docker-compose.backup.yml run --rm --entrypoint restic backup \
   -r /backups/restic restore latest --target /backups/restore-test
 # El dump plano queda en /srv/odoo-backups/restore-test/.../db.sql →
 # cargarlo en una DB vacía con psql confirma que la DB es recuperable;
@@ -182,14 +182,14 @@ Levantar staging (orden crítico automático: restore → anonimización → rec
 
 ```bash
 ./scripts/staging-up.sh
-docker compose -f Docker/docker-compose.staging.yml ps   # los 4 servicios healthy
+docker compose -f docker/docker-compose.staging.yml ps   # los 4 servicios healthy
 curl -s -o /dev/null -w "HTTP %{http_code}\n" https://staging.<tu-dominio-real>/web/health   # 200
 ```
 
 **Verificar la anonimización** (confirma que ningún dato real de cliente quedó expuesto):
 
 ```bash
-docker compose -f Docker/docker-compose.staging.yml exec -T db psql -U "$POSTGRES_USER" -d odoo_staging \
+docker compose -f docker/docker-compose.staging.yml exec -T db psql -U "$POSTGRES_USER" -d odoo_staging \
   -c "SELECT count(*) FROM ir_mail_server WHERE active;"   # → 0
 ```
 
@@ -253,29 +253,29 @@ cp env/.env.monitoring.example env/.env.monitoring   # completar con credenciale
 Levantar:
 
 ```bash
-docker compose -f Docker/docker-compose.monitoring.yml up -d
-docker compose -f Docker/docker-compose.monitoring.yml ps   # los 7 servicios healthy/running
+docker compose -f docker/docker-compose.monitoring.yml up -d
+docker compose -f docker/docker-compose.monitoring.yml ps   # los 7 servicios healthy/running
 curl -s -o /dev/null -w "HTTP %{http_code}\n" https://grafana.<tu-dominio-real>   # 200 (o el desafío de Cloudflare Access)
 ```
 
 Confirmar que Prometheus tiene todos los targets arriba:
 
 ```bash
-docker compose -f Docker/docker-compose.monitoring.yml exec -T prometheus wget -qO- http://localhost:9090/api/v1/targets
+docker compose -f docker/docker-compose.monitoring.yml exec -T prometheus wget -qO- http://localhost:9090/api/v1/targets
 ```
 
-Operación diaria (hasta que el Makefile lo envuelva — roadmap B010): `docker compose -f Docker/docker-compose.monitoring.yml up -d` / `down` / `logs -f <servicio>`.
+Operación diaria (hasta que el Makefile lo envuelva — roadmap B010): `docker compose -f docker/docker-compose.monitoring.yml up -d` / `down` / `logs -f <servicio>`.
 
 ## 8. Desarme (solo si esto fue una prueba)
 
 ```bash
-docker compose -f Docker/docker-compose.monitoring.yml down -v
-docker compose -f Docker/docker-compose.staging.yml down -v
+docker compose -f docker/docker-compose.monitoring.yml down -v
+docker compose -f docker/docker-compose.staging.yml down -v
 sudo systemctl stop odoo-staging-teardown.timer 2>/dev/null || true
 sudo systemctl disable --now staging-teardown-boot.service 2>/dev/null || true
-docker compose -f Docker/docker-compose.backup.yml down
-docker compose -f Docker/docker-compose.edge.yml down
-docker compose -f Docker/docker-compose.prod.yml down -v
+docker compose -f docker/docker-compose.backup.yml down
+docker compose -f docker/docker-compose.edge.yml down
+docker compose -f docker/docker-compose.prod.yml down -v
 docker network rm odoo-shared staging-net
 docker volume rm odoo-data
 sudo rm -rf /srv/odoo-backups

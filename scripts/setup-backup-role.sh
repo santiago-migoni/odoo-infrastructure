@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 : "${BACKUP_DB_PASSWORD:?falta BACKUP_DB_PASSWORD en el entorno}"
 . ./env/.env.prod
 
-docker compose -f Docker/docker-compose.prod.yml exec -T db psql -U "$POSTGRES_USER" -d odoo <<SQL
+docker compose -f docker/docker-compose.prod.yml exec -T db psql -U "$POSTGRES_USER" -d odoo <<SQL
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'backup_readonly') THEN

@@ -9,16 +9,16 @@ cd "$(dirname "$0")/.."
 
 . ./env/.env.staging
 
-if docker compose -f Docker/docker-compose.staging.yml ps -q db 2>/dev/null | grep -q .; then
+if docker compose -f docker/docker-compose.staging.yml ps -q db 2>/dev/null | grep -q .; then
   echo "[staging-up] staging ya está activa — bajando para un ciclo nuevo (teardown + fresh restore)..."
   ./scripts/staging-down.sh
 fi
 
-echo "[staging-up] Construyendo imagen de herramientas (restic + psql, Docker/Dockerfile.backup)..."
-docker build -f Docker/Dockerfile.backup -t odoo-restore-tools:local . >/dev/null
+echo "[staging-up] Construyendo imagen de herramientas (restic + psql, docker/Dockerfile.backup)..."
+docker build -f docker/Dockerfile.backup -t odoo-restore-tools:local . >/dev/null
 
 echo "[staging-up] Levantando solo db..."
-docker compose -f Docker/docker-compose.staging.yml up -d --wait db
+docker compose -f docker/docker-compose.staging.yml up -d --wait db
 
 echo "[staging-up] Restaurando el último backup (repo restic local)..."
 docker run --rm --network staging-net --env-file env/.env.staging \
@@ -28,7 +28,7 @@ docker run --rm --network staging-net --env-file env/.env.staging \
   --entrypoint sh \
   odoo-restore-tools:local /restore-staging.sh
 
-echo "[staging-up] Anonimizando (psql --single-transaction, directo a db:5432)..."
+echo "[staging-up] Anonimizando (psql --single-transaction, directo a db:5432)...)"
 docker run --rm --network staging-net \
   -e PGPASSWORD="$POSTGRES_PASSWORD" \
   -v "$(pwd)/scripts/anonymize-staging.sql:/anonymize-staging.sql:ro" \
@@ -37,7 +37,7 @@ docker run --rm --network staging-net \
   -h db -p 5432 -U "$POSTGRES_USER" -d odoo_staging -v ON_ERROR_STOP=1 --single-transaction -f /anonymize-staging.sql
 
 echo "[staging-up] Restore y anonimización OK — levantando pgbouncer + odoo-staging + postgres-exporter..."
-docker compose -f Docker/docker-compose.staging.yml up -d pgbouncer odoo-staging postgres-exporter
+docker compose -f docker/docker-compose.staging.yml up -d pgbouncer odoo-staging postgres-exporter
 
 echo "[staging-up] Armando teardown duro (~3h)..."
 ./scripts/staging-extend.sh

@@ -17,7 +17,7 @@ The Makefile is the single operational interface — shared between manual use a
 
 ```bash
 # Stack lifecycle
-make prod-up                  # Docker/docker-compose.prod.yml up -d (all services)
+make prod-up                  # docker/docker-compose.prod.yml up -d (all services)
 make prod-odoo-rebuild        # build --no-cache + up -d odoo
 make prod-odoo-logs           # logs -f odoo
 
@@ -48,11 +48,11 @@ odoo-bin -d test_db --test-enable --stop-after-init -i <module>
 
 | Stack | File | Services |
 |---|---|---|
-| `prod` | `Docker/docker-compose.prod.yml` | `odoo`, `db`, `pgbouncer` |
-| `staging` | `Docker/docker-compose.staging.yml` | `odoo`, `db`, `pgbouncer`, `postgres-exporter` |
-| `edge` | `Docker/docker-compose.edge.yml` | `traefik`, `cloudflared` |
-| `monitoring` | `Docker/docker-compose.monitoring.yml` | `prometheus`, `grafana`, `loki`, `promtail`, `cadvisor`, `node-exporter`, `postgres-exporter-prod` |
-| `backup` | `Docker/docker-compose.backup.yml` | `backup` (ephemeral, `run --rm`) |
+| `prod` | `docker/docker-compose.prod.yml` | `odoo`, `db`, `pgbouncer` |
+| `staging` | `docker/docker-compose.staging.yml` | `odoo`, `db`, `pgbouncer`, `postgres-exporter` |
+| `edge` | `docker/docker-compose.edge.yml` | `traefik`, `cloudflared` |
+| `monitoring` | `docker/docker-compose.monitoring.yml` | `prometheus`, `grafana`, `loki`, `promtail`, `cadvisor`, `node-exporter`, `postgres-exporter-prod` |
+| `backup` | `docker/docker-compose.backup.yml` | `backup` (ephemeral, `run --rm`) |
 
 All stacks share a single Docker internal network. **No container publishes ports to the host.** `cloudflared` talks to Traefik via Docker DNS (`http://traefik:80`).
 
@@ -64,11 +64,11 @@ Traefik defines **two routers per Odoo instance**: `/websocket` → port 8072 (g
 
 ### Odoo Image
 
-`FROM odoo:19.0` — custom `Docker/Dockerfile` copies `addons/` submodule, installs extra Python requirements. Tagged by commit SHA (never `latest`). Runs as `odoo` user (UID 101, never root).
+`FROM odoo:19.0` — custom `docker/Dockerfile` copies `addons/` submodule, installs extra Python requirements. Tagged by commit SHA (never `latest`). Runs as `odoo` user (UID 101, never root).
 
 ### Staging Is Ephemeral
 
-Every `make staging-up` restores the latest prod backup and runs the anonymization SQL **before** starting Odoo (order is critical — Odoo must not start with unanonymized prod data). Staging auto-tears down after ~3h (`down -v`). `postgres-exporter` lives in `Docker/docker-compose.staging.yml`, not in the monitoring stack, so it starts/stops with staging.
+Every `make staging-up` restores the latest prod backup and runs the anonymization SQL **before** starting Odoo (order is critical — Odoo must not start with unanonymized prod data). Staging auto-tears down after ~3h (`down -v`). `postgres-exporter` lives in `docker/docker-compose.staging.yml`, not in the monitoring stack, so it starts/stops with staging.
 
 ### Backup
 

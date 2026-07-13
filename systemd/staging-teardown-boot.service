@@ -6,7 +6,7 @@ After=docker.service network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/odoo-infrastructure
-ExecStart=/usr/bin/docker compose -f Docker/docker-compose.staging.yml down -v
+ExecStart=/usr/bin/docker compose -f docker/docker-compose.staging.yml down -v
 
 [Install]
 WantedBy=multi-user.target
