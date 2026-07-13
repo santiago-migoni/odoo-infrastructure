@@ -28,6 +28,11 @@ http:
       middlewares:
         - odoo-buffering
 
+    grafana:
+      rule: "Host(`grafana.miempresa.com`)"
+      priority: 1
+      service: grafana
+
   services:
     odoo-ws:
       loadBalancer:
@@ -48,6 +53,11 @@ http:
       loadBalancer:
         servers:
           - url: "http://odoo-staging:8069"
+
+    grafana:
+      loadBalancer:
+        servers:
+          - url: "http://grafana:3000"
 
   middlewares:
     odoo-buffering:

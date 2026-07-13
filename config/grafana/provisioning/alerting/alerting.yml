@@ -1,0 +1,123 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: email-operador
+    receivers:
+      - uid: email-operador-1
+        type: email
+        settings:
+          addresses: ${OPERATOR_EMAIL}
+
+policies:
+  - orgId: 1
+    receiver: email-operador
+    group_by: ["alertname"]
+
+groups:
+  - orgId: 1
+    name: infra-alerts
+    folder: Infra
+    interval: 1m
+    rules:
+      - uid: ram-host-alta
+        title: "RAM del host > 85%"
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: "RAM usada del host por encima del 85% sostenido"
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+              instant: false
+              range: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+
+      - uid: contenedor-caido
+        title: "Contenedor esperado caído"
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: "Un contenedor de prod/edge dejó de reportarse a cAdvisor"
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: max by (container_label_com_docker_compose_service) (time() - container_last_seen{container_label_com_docker_compose_service=~"odoo|db|pgbouncer|traefik|cloudflared"})
+              instant: false
+              range: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+
+      - uid: postgres-sin-conexiones
+        title: "Postgres prod sin conexiones disponibles"
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres prod cerca de agotar max_connections"
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: pg_settings_max_connections - sum(pg_stat_activity_count)
+              instant: false
+              range: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [5]

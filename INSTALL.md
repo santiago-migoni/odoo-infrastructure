@@ -10,7 +10,8 @@ Secuencia completa, de punta a punta:
 4. Stack `edge` (Traefik + Cloudflare Tunnel)
 5. Stack `backup` (Postgres RO + GPG + R2)
 6. Stack `staging` efímero (restore + anonimización + auto-teardown)
-7. Desarme (solo si esto fue una prueba, no un despliegue definitivo)
+7. Stack `monitoring` (Prometheus + Grafana + Loki + exporters)
+8. Desarme (solo si esto fue una prueba, no un despliegue definitivo)
 
 ## 1. Red y volumen compartidos (bootstrap, una sola vez)
 
@@ -213,9 +214,62 @@ sudo systemctl enable staging-teardown-boot.service
 systemd-analyze verify systemd/staging-teardown-boot.service
 ```
 
-## 7. Desarme (solo si esto fue una prueba)
+## 7. Stack `monitoring` (Prometheus + Grafana + Loki + exporters)
+
+Stack siempre-arriba, en `odoo-shared` (sin publicar puertos). Recolecta métricas de host/contenedores/Postgres prod, centraliza logs de todos los contenedores, y expone Grafana en `grafana.miempresa.com` por el edge existente.
+
+Crear (una sola vez) el rol de Postgres de solo lectura para el exporter:
 
 ```bash
+export MONITORING_DB_PASSWORD=elegir-un-password   # el mismo valor que va después en .env.monitoring
+./scripts/setup-monitoring-role.sh   # lee POSTGRES_USER de .env.prod automáticamente; seguro de re-correr
+```
+
+Agregar la tercera ruta al mismo Tunnel de Cloudflare creado en el paso 4 — dashboard → el mismo tunnel → **Routes → Add route → Published application**:
+
+1. **Subdomain** `grafana`, mismo **Domain** que prod, **Path** vacío.
+2. **Service URL**: `http://traefik:80` (igual que prod/staging — Traefik distingue por `Host`).
+
+Igualar el hostname en la config de Traefik:
+
+```bash
+sed -i "s/grafana.miempresa.com/grafana.<tu-dominio-real>/g" config/traefik-dynamic.yml
+```
+
+**Proteger `grafana.<tu-dominio-real>` con Cloudflare Access** (Access intercepta la request antes de que llegue a Grafana; el login propio de Grafana es la segunda capa) — dashboard → **Zero Trust → Access → Applications → Add an application**:
+
+1. Tipo de aplicación: **Self-hosted**.
+2. **Application domain**: el hostname `grafana.<tu-dominio-real>` recién creado.
+3. En la política de acceso, agregar una regla **Include** con tu email (o el dominio de email del equipo) — solo esa identidad puede pasar.
+4. Método de login: **One-time PIN** (por email) alcanza para un operador único; no requiere IdP externo.
+5. Guardar — a partir de acá, cualquier visita a `grafana.<tu-dominio-real>` pide autenticación de Cloudflare Access antes de mostrar el login de Grafana.
+
+Completar credenciales:
+
+```bash
+cp .env.monitoring.example .env.monitoring   # completar con credenciales reales (el password de MONITORING_DB_PASSWORD va embebido en el DSN de DATA_SOURCE_NAME, no como variable separada; también SMTP y OPERATOR_EMAIL), nunca commitear
+```
+
+Levantar:
+
+```bash
+docker compose -f docker-compose.monitoring.yml up -d
+docker compose -f docker-compose.monitoring.yml ps   # los 7 servicios healthy/running
+curl -s -o /dev/null -w "HTTP %{http_code}\n" https://grafana.<tu-dominio-real>   # 200 (o el desafío de Cloudflare Access)
+```
+
+Confirmar que Prometheus tiene todos los targets arriba:
+
+```bash
+docker compose -f docker-compose.monitoring.yml exec -T prometheus wget -qO- http://localhost:9090/api/v1/targets
+```
+
+Operación diaria (hasta que el Makefile lo envuelva — roadmap B010): `docker compose -f docker-compose.monitoring.yml up -d` / `down` / `logs -f <servicio>`.
+
+## 8. Desarme (solo si esto fue una prueba)
+
+```bash
+docker compose -f docker-compose.monitoring.yml down -v
 docker compose -f docker-compose.staging.yml down -v
 sudo systemctl stop odoo-staging-teardown.timer 2>/dev/null || true
 sudo systemctl disable --now staging-teardown-boot.service 2>/dev/null || true
@@ -225,7 +279,7 @@ docker compose -f docker-compose.prod.yml down -v
 docker network rm odoo-shared staging-net
 docker volume rm odoo-data
 sudo rm -rf /srv/odoo-backups
-rm -f .env.prod .env.edge .env.backup .env.staging
+rm -f .env.prod .env.edge .env.backup .env.staging .env.monitoring
 git checkout config/traefik-dynamic.yml
 ```
 
