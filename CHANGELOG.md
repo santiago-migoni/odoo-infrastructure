@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Reorganización de layout (`007-repo-layout-reorg`) — los 5 `docker-compose.*.yml` y los 2 `Dockerfile*` pasan a vivir bajo `Docker/`, y las 5 plantillas `.env.*.example` (más la convención del `.env.<stack>` real de cada entorno) pasan a `env/`. Cada compose ajusta su `build` (context a la raíz + `dockerfile: Docker/...`), `env_file` (`../env/.env.<stack>`) y mounts (`../config/...`) para seguir resolviendo igual que antes; `config/`, `systemd/`, `scripts/` y `addons/` no se mueven. Toda referencia existente actualizada (scripts, timers de systemd, `INSTALL.md`, `CLAUDE.md`, `docs/infrastructure-design.md`). Deja el terreno listo para el Makefile (roadmap B010), que ya no tendría que tocar estos paths. De paso, se fijó el nombre de proyecto de Compose a `odoo-infrastructure-<stack>` (uno por stack, no un literal idéntico compartido) — un test real durante la implementación reveló que un nombre de proyecto idéntico entre `prod` y `staging` (que comparten nombres de servicio como `db`/`pgbouncer`) hace que Compose recree y reemplace el contenedor del otro stack al levantar el segundo; el sufijo por stack lo evita. Verificado con build real de ambas imágenes desde la nueva ubicación, `docker compose config -q` en las 5 stacks con `env/` real poblado, y un smoke completo del stack `monitoring` exclusivamente con las rutas nuevas.
+
 ## [0.6.0] - 2026-07-13
 
 ### Added
