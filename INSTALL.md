@@ -40,6 +40,7 @@ docker inspect --format '{{.Config.User}}' odoo-prod:$(git rev-parse --short HEA
 
 ```bash
 cp env/.env.prod.example env/.env.prod   # completar con credenciales reales, nunca commitear
+cp config/odoo.conf.example config/odoo.conf   # ambos gitignored, editar a mano en el server
 docker compose -f docker/docker-compose.prod.yml up -d
 docker compose -f docker/docker-compose.prod.yml ps   # confirmar que los 3 servicios están healthy
 ```
@@ -109,6 +110,7 @@ Preparar la carpeta de los repos y la config:
 
 ```bash
 sudo mkdir -p /srv/odoo-backups
+sudo mkdir -p /srv/node-exporter-textfile   # métrica de freshness, leída por node-exporter (stack monitoring)
 cp env/.env.backup.example env/.env.backup
 ```
 
@@ -185,6 +187,7 @@ Completar credenciales:
 
 ```bash
 cp env/.env.staging.example env/.env.staging   # completar con credenciales reales, nunca commitear
+cp config/odoo-staging.conf.example config/odoo-staging.conf   # ambos gitignored, editar a mano en el server
 ```
 
 Levantar staging (orden crítico automático: restore → anonimización → recién Odoo):

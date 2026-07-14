@@ -16,6 +16,7 @@ services:
     volumes:
       - odoo-data:/filestore:ro
       - /srv/odoo-backups:/backups
+      - /srv/node-exporter-textfile:/textfile-collector
     mem_limit: 1g
     cpus: 1.0
     networks:

@@ -19,4 +19,8 @@ RUN find /mnt/custom-addons /mnt/enterprise-addons /mnt/oca-addons -name require
 
 RUN chown -R odoo:odoo /mnt/custom-addons /mnt/enterprise-addons /mnt/oca-addons
 
+COPY scripts/odoo-entrypoint.sh /usr/local/bin/odoo-entrypoint.sh
+RUN chmod +x /usr/local/bin/odoo-entrypoint.sh
+
 USER odoo
+ENTRYPOINT ["/usr/local/bin/odoo-entrypoint.sh"]

@@ -42,4 +42,13 @@ restic forget --keep-daily 14 --keep-weekly 4 --keep-monthly 12 --keep-yearly 3 
 # timestamp de la última corrida realmente exitosa, no una falsa señal de éxito.
 touch /backups/.last-success
 
+# Métrica para node-exporter (textfile collector): mismo principio que el
+# marcador de arriba, solo se escribe tras el éxito completo. Se escribe a un
+# temp file en el mismo directorio y se mueve (rename atómico) para que
+# node-exporter nunca lea un .prom a medio escribir.
+if [ -d /textfile-collector ]; then
+  echo "odoo_backup_last_success_timestamp_seconds $(date +%s)" > /textfile-collector/odoo_backup.prom.tmp
+  mv /textfile-collector/odoo_backup.prom.tmp /textfile-collector/odoo_backup.prom
+fi
+
 echo "[backup] OK"

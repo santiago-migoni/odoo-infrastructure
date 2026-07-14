@@ -4,4 +4,6 @@ env/.env.staging
 env/.env.edge
 env/.env.backup
 env/.env.monitoring
+config/odoo.conf
+config/odoo-staging.conf
 .DS_Store
