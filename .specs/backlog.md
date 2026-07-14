@@ -10,7 +10,4 @@ Ideas, deferred work, and future features not yet turned into a spec. Ordered by
 
 ## P2 — Medium
 
-- [ ] B012 Sacar `config/odoo.conf` y `config/odoo-staging.conf` de git — patrón `.example` versionado + real gitignored en el server, igual que `.env` (permite configuración manual sin depender de un commit); agregar chequeo automático de `list_db=False`/`proxy_mode=True` al arrancar como red de seguridad mínima sobre lo no-negociable de la constitución (noted 2026-07-13, from sesión de /grilling)
-- [ ] B013 Llevar el healthcheck de freshness del backup (`/backups/.last-success`, feature 009-backup-stable) a una métrica real de Prometheus — hoy solo es visible vía `docker compose ps`/`docker inspect`, cAdvisor no expone el estado de `HEALTHCHECK` de Docker como métrica (solo recursos vía cgroups). Opciones a evaluar: `textfile collector` de node-exporter escribiendo la freshness del marcador como gauge, o un exporter dedicado (noted 2026-07-14, from convergencia de 009-backup-stable — finding F1)
-
 ## P3 — Low
