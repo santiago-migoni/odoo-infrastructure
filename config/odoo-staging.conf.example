@@ -5,7 +5,7 @@ db_name = odoo_staging
 list_db = False
 proxy_mode = True
 
-workers = 1
-max_cron_threads = 1
-limit_memory_soft = 572522496
-limit_memory_hard = 715128832
+workers = 4
+max_cron_threads = 2
+limit_memory_soft = 2147483648
+limit_memory_hard = 2684354560
