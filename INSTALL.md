@@ -9,7 +9,7 @@ Secuencia completa, de punta a punta:
 3. Stack de producción
 4. Stack `edge` (Traefik + Cloudflare Tunnel)
 5. Stack `backup` (Postgres RO + GPG + R2)
-6. Stack `staging` efímero (restore + anonimización + auto-teardown)
+6. Stack `staging` siempre-arriba (restore + anonimización, refresh semanal)
 7. Stack `monitoring` (Prometheus + Grafana + Loki + exporters)
 8. Restore de prod (disaster recovery)
 9. Desarme (solo si esto fue una prueba, no un despliegue definitivo)
@@ -166,9 +166,9 @@ systemd-analyze verify systemd/odoo-backup.service systemd/odoo-backup.timer
 
 El contenedor expone un `HEALTHCHECK` que confirma si el último backup exitoso tiene menos de ~26h — visible en `docker compose -f docker/docker-compose.backup.yml ps` (`healthy`/`unhealthy`) y en `docker inspect --format '{{.State.Health.Status}}' <container>`. Si el timer alguna vez deja de correr o `backup.sh` empieza a fallar, el contenedor pasa a `unhealthy` sin necesidad de leer logs a mano. (cAdvisor no expone el estado de `HEALTHCHECK` de Docker como métrica — solo recursos vía cgroups — así que esto **no** es visible como tal en Prometheus/Grafana hoy; ver backlog para llevar esta señal a una métrica real.)
 
-## 6. Stack `staging` efímero (restore + anonimización + auto-teardown)
+## 6. Stack `staging` siempre-arriba (restore + anonimización, refresh semanal)
 
-Réplica fiel de prod a menor escala (mismo modelo multiproceso, sin `dev_mode`), en su propia red aislada — no comparte `odoo-shared` con prod. Se levanta on-demand, restaura el último backup de prod y lo anonimiza **antes** de arrancar Odoo, y se autodestruye a las ~3h.
+Réplica fiel de prod a menor escala (mismo modelo multiproceso, sin `dev_mode`), en su propia red aislada — no comparte `odoo-shared` con prod. Se levanta una vez y queda arriba de forma permanente (`restart: unless-stopped`, sobrevive un reinicio del server); se refresca solo una vez por semana (systemd timer → mismo ciclo restore + anonimización de siempre, **antes** de arrancar Odoo). Pausar sin perder los datos del último refresh es `docker compose -f docker/docker-compose.staging.yml stop`; bajarla del todo (destructivo) es `staging-down.sh`.
 
 Agregar la segunda ruta al mismo Tunnel de Cloudflare creado en el paso 4 — dashboard → el mismo tunnel → **Routes → Add route → Published application**:
 
@@ -202,26 +202,25 @@ docker compose -f docker/docker-compose.staging.yml exec -T db psql -U "$POSTGRE
   -c "SELECT count(*) FROM ir_mail_server WHERE active;"   # → 0
 ```
 
-Extender la sesión ~3h más si hace falta:
+Pedir un ciclo nuevo a mano en cualquier momento (`staging-up.sh` hace teardown + fresh restore si staging ya está activa), o bajarla del todo si hace falta liberar el ambiente:
 
 ```bash
-./scripts/staging-extend.sh
+./scripts/staging-up.sh      # refresh manual, mismo ciclo que el timer semanal
+./scripts/staging-down.sh    # baja y destruye volúmenes (down -v) — deliberado, no automático
 ```
 
-Bajar manualmente antes de que el timer la fuerce (o pedir un ciclo nuevo — `staging-up.sh` hace teardown + fresh restore si staging ya está activa):
+Instalar el timer de refresh semanal:
 
 ```bash
-./scripts/staging-down.sh
-```
-
-Instalar el teardown de boot (para que un reinicio del server nunca deje staging colgada comiendo RAM):
-
-```bash
-sudo cp systemd/staging-teardown-boot.service /etc/systemd/system/
+sudo cp systemd/staging-refresh.service systemd/staging-refresh.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable staging-teardown-boot.service
-systemd-analyze verify systemd/staging-teardown-boot.service
+sudo systemctl enable --now staging-refresh.timer
+systemd-analyze verify systemd/staging-refresh.service systemd/staging-refresh.timer
 ```
+
+No hace falta instalar nada para que staging vuelva sola tras un reinicio del server — `restart: unless-stopped` en los 4 servicios ya lo cubre, mismo mecanismo que `prod`/`edge`/`backup`.
+
+> **Migración desde un deploy con el teardown de boot viejo (feature 005):** si `staging-teardown-boot.service` ya estaba instalado y habilitado, hay que deshabilitarlo explícitamente antes de actualizar — si no, sigue destruyendo staging en cada reinicio con el comportamiento viejo: `sudo systemctl disable --now staging-teardown-boot.service && sudo rm -f /etc/systemd/system/staging-teardown-boot.service && sudo systemctl daemon-reload`.
 
 ## 7. Stack `monitoring` (Prometheus + Grafana + Loki + exporters)
 
@@ -299,8 +298,7 @@ Equivalente directo (lo que el target ejecuta por dentro):
 ```bash
 docker compose -f docker/docker-compose.monitoring.yml down -v
 docker compose -f docker/docker-compose.staging.yml down -v
-sudo systemctl stop odoo-staging-teardown.timer 2>/dev/null || true
-sudo systemctl disable --now staging-teardown-boot.service 2>/dev/null || true
+sudo systemctl disable --now staging-refresh.timer 2>/dev/null || true
 docker compose -f docker/docker-compose.backup.yml down
 docker compose -f docker/docker-compose.edge.yml down
 docker compose -f docker/docker-compose.prod.yml down -v

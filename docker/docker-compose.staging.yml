@@ -21,6 +21,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    restart: unless-stopped
     mem_limit: 1.5g
     cpus: 1.0
     networks:
@@ -46,6 +47,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    restart: unless-stopped
     mem_limit: 128m
     cpus: 0.25
     networks:
@@ -71,6 +73,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    restart: unless-stopped
     mem_limit: 2g
     cpus: 1.5
     networks:
@@ -82,6 +85,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
     mem_limit: 64m
     cpus: 0.25
     networks:

@@ -39,7 +39,4 @@ docker run --rm --network staging-net \
 echo "[staging-up] Restore y anonimización OK — levantando pgbouncer + odoo-staging + postgres-exporter..."
 docker compose -f docker/docker-compose.staging.yml up -d pgbouncer odoo-staging postgres-exporter
 
-echo "[staging-up] Armando teardown duro (~3h)..."
-./scripts/staging-extend.sh
-
 echo "[staging-up] OK — staging arriba en https://staging.miempresa.com"

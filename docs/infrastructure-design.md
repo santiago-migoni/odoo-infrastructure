@@ -56,7 +56,7 @@ Reserva ~2-3 GiB para SO + Docker + Traefik + cloudflared + PgBouncer + monitori
   - Semanales: 3 meses.
   - Mensuales: 1 año, en Standard-IA.
   - R2 no tiene tiers Glacier/Deep Archive (solo Standard y Standard-IA) — si se necesita retención >1 año, exportar manualmente a almacenamiento frío aparte.
-- **Restore de prueba:** no requiere cron propio — cada arranque de staging efímera (`make staging-up` / `up-staging`) ya restaura el último backup como parte de su flujo normal (ver "Refresh de staging"), lo cual cumple (y supera en frecuencia) la recomendación de oec.sh de probar restores mensualmente.
+- **Restore de prueba:** el refresh semanal de staging (`staging-refresh.timer`, ver "Refresh de staging") ya restaura el último backup como parte de su flujo normal, lo cual cumple (y supera en frecuencia) la recomendación de oec.sh de probar restores mensualmente.
 - **Ejecución:** contenedor efímero dedicado, no script en el host — ver "Contenedor de backup" más abajo.
 
 ### Contenedor de backup
@@ -66,7 +66,7 @@ Reserva ~2-3 GiB para SO + Docker + Traefik + cloudflared + PgBouncer + monitori
 - Disparo: systemd timer diario → `docker compose -f docker/docker-compose.backup.yml run --rm backup` (equivalente al target `prod-backup-run` del Makefile). Costo de RAM ≈ 0 fuera de la ventana en que corre (minutos), no un daemon permanente.
 
 ### Monitoring
-- **Stack:** Prometheus + Grafana (elegido sobre la alternativa liviana Uptime Kuma). Ver "Presupuesto de RAM" más abajo — con staging efímera el margen es cómodo, ya no hace falta recortar este stack por RAM.
+- **Stack:** Prometheus + Grafana (elegido sobre la alternativa liviana Uptime Kuma). Ver "Presupuesto de RAM" más abajo — el margen quedó más ajustado desde que staging pasó a siempre-arriba (`010-staging-stable`), pero sigue sin hacer falta recortar este stack por RAM dentro de los 14 GiB actuales.
 - **Exporters:** node-exporter (host), cAdvisor (por contenedor), postgres_exporter (DB). Sin exporter de Odoo (no existe uno oficial mantenido) — si hace falta más adelante, healthcheck HTTP simple en su lugar.
 - **Alertas:** Grafana Alerting (sin Alertmanager separado) → Telegram/email. Dispara con: RAM del host por encima de umbral, contenedor caído, Postgres sin conexiones disponibles.
 - **Logs centralizados:** Loki + Promtail (integrado a Grafana).
@@ -90,10 +90,10 @@ Cada servicio varía con su propia carga, no solo con si staging está prendida 
 | postgres-exporter-prod | implementado (006) | 10 MB | 25 MB | riesgo de leak sin techo fijo | `64m` | Footprint normal es "decenas de MB"; hay issues reales de memory leak con queries específicas — el `mem_limit` lo contiene (muere por OOM, no se come RAM del host) |
 | Loki | implementado (006) | 300 MB | 1.5 GiB | 4+ GiB | `2g` — contiene el Normal, no el Alto | Modo monolítico (nuestro caso, un solo nodo) estabiliza ~1.5GB; queries no optimizadas pueden disparar a 4GB+ y matar el contenedor por OOM (aceptado, ver PLAN-006 Risks) |
 | Promtail | implementado (006) | 20 MB | 50 MB | riesgo de leak sin techo fijo | `128m` | Footprint normal liviano; hay un issue abierto de memory leak — el `mem_limit` lo contiene |
-| Odoo staging (1 worker, `hard=682MiB`) | implementado (005) | 0.4 GiB | 0.7 GiB | 1.17 GiB | `2g` — holgado | Mismo mecanismo que prod, un solo worker. Efímera: solo pesa en el peak (ventana de ~3h), ya presupuestado abajo |
-| Postgres staging (`shared_buffers=512MiB`) | implementado (005) | 0.55 GiB | 0.8 GiB | 1.4 GiB | `1.5g` — holgado | Mismo mecanismo que prod, pool más chico (`pool_size=5`) |
-| PgBouncer staging | implementado (005) | 5 MB | 20 MB | 50 MB | `128m` — muy holgado | Igual que PgBouncer prod |
-| postgres-exporter-staging | implementado (005) | 10 MB | 25 MB | riesgo de leak sin techo fijo | `64m` | Igual que postgres-exporter-prod; el `mem_limit` lo contiene si hay leak (muere por OOM, no se come RAM del host). Vive en `docker/docker-compose.staging.yml`, nace/muere con staging |
+| Odoo staging (1 worker, `hard=682MiB`) | implementado (005, siempre-arriba desde 010) | 0.4 GiB | 0.7 GiB | 1.17 GiB | `2g` — holgado | Mismo mecanismo que prod, un solo worker. Desde 010-staging-stable pesa su footprint Normal de forma permanente (ya no solo en una ventana de ~3h) — refresh semanal, no auto-teardown |
+| Postgres staging (`shared_buffers=512MiB`) | implementado (005, siempre-arriba desde 010) | 0.55 GiB | 0.8 GiB | 1.4 GiB | `1.5g` — holgado | Mismo mecanismo que prod, pool más chico (`pool_size=5`); siempre-arriba desde 010 |
+| PgBouncer staging | implementado (005, siempre-arriba desde 010) | 5 MB | 20 MB | 50 MB | `128m` — muy holgado | Igual que PgBouncer prod; siempre-arriba desde 010 |
+| postgres-exporter-staging | implementado (005, siempre-arriba desde 010) | 10 MB | 25 MB | riesgo de leak sin techo fijo | `64m` | Igual que postgres-exporter-prod; el `mem_limit` lo contiene si hay leak (muere por OOM, no se come RAM del host). Vive en `docker/docker-compose.staging.yml`; ya no nace/muere con staging — siempre-arriba desde 010 |
 | Runner GitHub Actions + SO | host | 0.6 GiB | 1.0 GiB | 1.5 GiB | — | Overhead genérico de host + runner, no un producto puntual con fuente propia |
 
 **Dos hallazgos, ya resueltos:**
@@ -103,12 +103,14 @@ Cada servicio varía con su propia carga, no solo con si staging está prendida 
 
 **Totales recalculados (columna Normal):**
 
-| Escenario | prod + edge + backup + monitoring | + staging (ventana ~3h) |
-|---|---|---|
-| Baseline (staging apagada) | ~10.1 GiB | — |
-| Peak (staging activa) | — | ~11.7 GiB |
+Desde `010-staging-stable`, staging ya no es un escenario de "peak" acotado a una ventana de ~3h — está siempre arriba, así que su costo pasa a ser el estado Normal permanente del server. "Staging apagada" deja de ser el default y pasa a ser el escenario de pausa manual (`docker compose stop`, sin perder datos, ver `010-staging-stable`).
 
-Los totales bajan un poco respecto del presupuesto anterior (~11.0/~13.1 GiB): el Odoo prod "Normal" real (4.0 GiB) es más bajo que el número que se venía usando (que en realidad describía el escenario Alto, ~6.5 GiB) — pero **Loki solo, en operación normal, es ~1.5 GiB**, casi 4x el ~0.4 GiB que se le asignaba combinado con Promtail. Los dos desvíos iban en direcciones opuestas y se compensaban en el total general, ocultando que las líneas individuales estaban mal calibradas. Margen resultante: ~7.8 GiB en baseline, ~2.3 GiB en peak (staging activa), sin contar el colchón de 4 GiB de swap.
+| Escenario | Total |
+|---|---|
+| Normal (staging siempre arriba, default) | ~11.7 GiB |
+| Staging pausada manualmente (`docker compose stop`) | ~10.1 GiB |
+
+Los totales bajan un poco respecto del presupuesto anterior (~11.0/~13.1 GiB): el Odoo prod "Normal" real (4.0 GiB) es más bajo que el número que se venía usando (que en realidad describía el escenario Alto, ~6.5 GiB) — pero **Loki solo, en operación normal, es ~1.5 GiB**, casi 4x el ~0.4 GiB que se le asignaba combinado con Promtail. Los dos desvíos iban en direcciones opuestas y se compensaban en el total general, ocultando que las líneas individuales estaban mal calibradas. Margen resultante: ~2.3 GiB en operación normal (staging permanentemente activa — el escenario por defecto desde 010), ~7.8 GiB si se pausa manualmente, sin contar el colchón de 4 GiB de swap. El margen permanente más ajustado fue evaluado y aceptado explícitamente al decidir esta feature.
 
 **Fuentes:** [Odoo — cálculo de workers](https://www.odoo.com/forum/help-1/odoo-worker-number-calculation-for-multiprocessing-172597), [Odoo — GH #107799 limit_memory](https://github.com/odoo/odoo/issues/107799), [PostgreSQL — tuning shared_buffers/work_mem](https://oneuptime.com/blog/post/2026-01-25-postgresql-shared-buffers-work-mem-tuning/view), [PgBouncer features](https://www.pgbouncer.org/features.html), [Traefik — recomendaciones RAM/CPU](https://community.traefik.io/t/traefik-ram-and-cpu-recommendations-for-k8s/2756), [restic — memoria alta en backup/prune](https://forum.restic.net/t/high-memory-usage-on-backup-prune-and-check/1253), [restic — GH #2519](https://github.com/restic/restic/issues/2519), [Prometheus — RAM por cardinalidad](https://www.robustperception.io/how-much-ram-does-prometheus-2-x-need-for-cardinality-and-ingestion/), [Grafana — memoria](https://last9.io/blog/grafana-memory-usage/), [cAdvisor/node-exporter — límites típicos](https://www.cloudforecast.io/blog/cadvisor-and-kubernetes-monitoring-guide/), [postgres_exporter — memoria](https://github.com/prometheus-community/postgres_exporter/issues/694), [Loki — RAM en instalación chica](https://community.grafana.com/t/optimizing-ram-for-small-installation/120459), [Promtail — leak GH #8054](https://github.com/grafana/loki/issues/8054).
 
@@ -121,7 +123,7 @@ Los totales bajan un poco respecto del presupuesto anterior (~11.0/~13.1 GiB): e
 - Ambos como hostnames dentro del mismo Cloudflare Tunnel, enrutados por Traefik al contenedor correspondiente.
 
 ### Refresh de staging (referencia oec.sh — `/guides/odoo-staging`)
-- Sin cadencia programada — staging es efímera (levanta on-demand, hasta 3h, ver "Sizing"/Makefile), así que cada arranque restaura el último backup de prod. No hace falta un refresh "semanal" separado: el uso normal de staging ya la mantiene siempre al día, y de paso cumple el rol del restore de prueba que recomienda oec.sh.
+- Desde `010-staging-stable`: staging es siempre-arriba y se refresca automáticamente una vez por semana vía systemd timer (`staging-refresh.timer` → `staging-up.sh`) — mismo ciclo restore + anonimización de siempre, disparado solo o a mano indistintamente. De paso cumple el rol del restore de prueba que recomienda oec.sh (con más frecuencia que la recomendación mensual).
 - ⚠️ **Orden crítico:** el script de anonimización corre inmediatamente después de restaurar la base y **antes** de levantar el contenedor Odoo — si Odoo arranca primero con datos de prod sin anonimizar, los cron de mail encolados pueden disparar emails reales a clientes.
 - SQL de anonimización: `UPDATE ir_mail_server SET active = false` (corta servidores de saliente), passwords de usuarios reseteados a valores random, `UPDATE res_partner SET email = 'staging+' || id || '@example.com'`, deshabilitar payment providers y limpiar URLs de webhooks en `ir_config_parameter`, desactivar crons relacionados a mail.
 - Config propia de staging en `odoo.conf`: solo `db_name` distinto (`odoo_staging`). Sin `dev_mode` — staging corre con el mismo modelo multiproceso que prod (workers, sin hot-reload), para que sea una réplica fiel a menor escala y no un modo de ejecución distinto (ver "Sizing": 1 worker, sin `dev_mode`, mismo ruteo de longpolling que prod). oec.sh también sugiere puerto HTTP distinto, pero no aplica acá — cada entorno es un contenedor separado con su propio namespace de red, así que ambos pueden usar 8069 internamente sin conflicto; Traefik distingue por hostname, no por puerto.

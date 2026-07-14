@@ -21,7 +21,7 @@ make prod-up                  # docker/docker-compose.prod.yml up -d (all servic
 make prod-odoo-rebuild        # build --no-cache + up -d odoo
 make prod-odoo-logs           # logs -f odoo
 
-make staging-up               # restore last prod backup + anonymize + up (max 3h, then auto down -v)
+make staging-up               # restore last prod backup + anonymize + up (always-on, weekly auto-refresh)
 make staging-down             # down -v (destroys staging volumes)
 
 make edge-traefik-restart
@@ -46,13 +46,13 @@ odoo-bin -d test_db --test-enable --stop-after-init -i <module>
 
 ### 5 Docker Compose Stacks
 
-| Stack | File | Services |
-|---|---|---|
-| `prod` | `docker/docker-compose.prod.yml` | `odoo`, `db`, `pgbouncer` |
-| `staging` | `docker/docker-compose.staging.yml` | `odoo`, `db`, `pgbouncer`, `postgres-exporter` |
-| `edge` | `docker/docker-compose.edge.yml` | `traefik`, `cloudflared` |
-| `monitoring` | `docker/docker-compose.monitoring.yml` | `prometheus`, `grafana`, `loki`, `promtail`, `cadvisor`, `node-exporter`, `postgres-exporter-prod` |
-| `backup` | `docker/docker-compose.backup.yml` | `backup` (ephemeral, `run --rm`) |
+| Stack        | File                                   | Services                                                                                          |
+|---           |---                                     |---                                                                                                |
+| `prod`       | `docker/docker-compose.prod.yml`       | `odoo`, `db`, `pgbouncer`                                                                         |
+| `staging`    | `docker/docker-compose.staging.yml`    | `odoo`, `db`, `pgbouncer`, `postgres-exporter`                                                    |
+| `edge`       | `docker/docker-compose.edge.yml`       | `traefik`, `cloudflared`                                                                          |
+| `monitoring` | `docker/docker-compose.monitoring.yml` | `prometheus`, `grafana`, `loki`, `promtail`, `cadvisor`, `node-exporter` `postgres-exporter-prod` |
+| `backup`     | `docker/docker-compose.backup.yml`     | `backup` (ephemeral, `run --rm`)                                                                  |
 
 All stacks share a single Docker internal network. **No container publishes ports to the host.** `cloudflared` talks to Traefik via Docker DNS (`http://traefik:80`).
 
@@ -66,9 +66,9 @@ Traefik defines **two routers per Odoo instance**: `/websocket` → port 8072 (g
 
 `FROM odoo:19.0` — custom `docker/Dockerfile` copies `addons/` submodule, installs extra Python requirements. Tagged by commit SHA (never `latest`). Runs as `odoo` user (UID 101, never root).
 
-### Staging Is Ephemeral
+### Staging Is Always-On, Weekly Refresh
 
-Every `make staging-up` restores the latest prod backup and runs the anonymization SQL **before** starting Odoo (order is critical — Odoo must not start with unanonymized prod data). Staging auto-tears down after ~3h (`down -v`). `postgres-exporter` lives in `docker/docker-compose.staging.yml`, not in the monitoring stack, so it starts/stops with staging.
+Every `make staging-up` restores the latest prod backup and runs the anonymization SQL **before** starting Odoo (order is critical — Odoo must not start with unanonymized prod data). Staging stays up permanently (`restart: unless-stopped`, survives a server reboot) and refreshes automatically once a week via a systemd timer running this same cycle — no auto-teardown. `postgres-exporter` lives in `docker/docker-compose.staging.yml`, not in the monitoring stack, so it starts/stops with staging.
 
 ### Backup
 
@@ -90,10 +90,10 @@ Ephemeral container (`postgres:19-alpine` + `rclone` + `gnupg`). Always DB (`pg_
 
 ## RAM Budget (summary)
 
-| Scenario | Estimated total |
-|---|---|
-| Baseline (staging down) | ~11.0 GiB |
-| Peak (staging active, 3h window) | ~13.1 GiB |
+| Scenario                         | Estimated total                          |
+|---                               |---                                       |
+| Baseline (staging down)          | ~11.0 GiB                                |
+| Peak (staging active)            | ~13.1 GiB                                |
 
 Prod: 3 Odoo workers (`limit_memory_hard=2048 MiB`), Postgres `shared_buffers=1.5 GiB`.  
 Staging: 1 worker (`hard=682 MiB`), Postgres `shared_buffers=512 MiB`. No `dev_mode`.

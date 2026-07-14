@@ -96,7 +96,7 @@ help:
 	@echo "Rebuild (build propio):  prod-odoo-rebuild | staging-odoo-staging-rebuild"
 	@echo ""
 	@echo "Especiales:"
-	@echo "  staging-up | staging-down | staging-extend | staging-db-restore (alias de staging-up)"
+	@echo "  staging-up | staging-down | staging-db-restore (alias de staging-up)"
 	@echo "  backup | backup-backup-run"
 	@echo "  setup-backup-role | setup-monitoring-role"
 	@echo "  prod-db-restore CONFIRM=yes [LOCAL=yes]   -- destructivo, disaster recovery"
@@ -115,9 +115,6 @@ staging-up:
 staging-down:
 	./scripts/staging-down.sh
 
-staging-extend:
-	./scripts/staging-extend.sh
-
 # El "restore" de staging es el ciclo completo (restore + anonimización + up),
 # nunca un restore parcial sin anonimizar — honra el invariante de 005.
 staging-db-restore: staging-up
@@ -134,6 +131,6 @@ setup-monitoring-role:
 prod-db-restore:
 	./scripts/prod-db-restore.sh
 
-.PHONY: staging-up staging-down staging-extend staging-db-restore backup-backup-run backup setup-backup-role setup-monitoring-role prod-db-restore
+.PHONY: staging-up staging-down staging-db-restore backup-backup-run backup setup-backup-role setup-monitoring-role prod-db-restore
 
 .PHONY: help

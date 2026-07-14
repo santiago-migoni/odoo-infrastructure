@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh semanal de staging (restore + anonimización + up)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/odoo-infrastructure
+ExecStart=/bin/sh /opt/odoo-infrastructure/scripts/staging-up.sh
