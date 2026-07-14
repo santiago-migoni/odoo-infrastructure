@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Self-hosted Odoo 19 Community infrastructure for a single-tenant deployment on `serverdipleg` (AMD Ryzen 5 5600G, 6 cores/12 threads, 14 GiB RAM, NVMe). Full design in `docs/infrastructure-design.md`. Constitution in `.specs/constitution.md`.
+Self-hosted Odoo 19 Community infrastructure for a single-tenant deployment on `serverdipleg` (AMD Ryzen 5 5600G, 6 cores/12 threads, 14 GiB RAM, NVMe). Constitution in `.specs/constitution.md`. Design history and rationale per feature in `.specs/archive/`.
 
 ## Operational Rules
 
@@ -84,7 +84,7 @@ Ephemeral container (`postgres:19-alpine` + `rclone` + `gnupg`). Always DB (`pg_
 - `list_db = False` and `proxy_mode = True` in every `odoo.conf` for any exposed environment.
 - Never use `latest` image tag — always `odoo:19.0` + commit SHA build tag.
 - Prod deploys are always manual with approval; staging deploys are automatic after lint + tests pass.
-- Any sizing change (workers, `shared_buffers`, new services) must be reviewed against the RAM budget in `docs/infrastructure-design.md`. RAM is the real bottleneck (14 GiB shared between all stacks).
+- Any sizing change (workers, `shared_buffers`, new services) must be reviewed against the RAM budget below. RAM is the real bottleneck (14 GiB shared between all stacks).
 - `PGDATA` must point to a subdirectory of the volume (`/var/lib/postgresql/data/pgdata`), not the mount point root.
 - `odoo.conf` is always mounted read-only (`:ro`).
 

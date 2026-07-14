@@ -4,6 +4,7 @@ A partir de la feature `008-makefile`, el `Makefile` en la raíz es la interfaz 
 
 Secuencia completa, de punta a punta:
 
+0. Clonar el repo, pineado a un release (tag)
 1. Red y volumen compartidos (bootstrap, una sola vez)
 2. Build de la imagen de Odoo
 3. Stack de producción
@@ -13,6 +14,26 @@ Secuencia completa, de punta a punta:
 7. Stack `monitoring` (Prometheus + Grafana + Loki + exporters)
 8. Restore de prod (disaster recovery)
 9. Desarme (solo si esto fue una prueba, no un despliegue definitivo)
+
+## 0. Clonar el repo, pineado a un release (tag)
+
+El server corre siempre un release taggeado, nunca la punta de `main` — así el deploy es reproducible y no arrastra commits posteriores sin querer:
+
+```bash
+git clone <url-del-repo> /opt/odoo-infrastructure
+cd /opt/odoo-infrastructure
+git fetch --tags
+git checkout vX.Y.Z   # el tag del release a instalar
+```
+
+Esto deja el repo en **detached HEAD** apuntando exactamente al commit del tag — es lo esperado (git va a avisar), no se commitea nada ahí.
+
+Para actualizar a un release posterior:
+
+```bash
+git fetch --tags
+git checkout vX.Y.Z
+```
 
 ## 1. Red y volumen compartidos (bootstrap, una sola vez)
 

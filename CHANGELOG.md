@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-07-14
+
+### Added
+- `README.md` reescrito como punto de entrada del repo — arquitectura de los 5 stacks, principios de diseño no-negociables, cómo empezar, comandos de operación diaria vía `Makefile`, y el flujo de desarrollo con spec-flow.
+- `INSTALL.md` — nuevo paso 0: clonar el repo pineado a un tag de release (`git checkout vX.Y.Z`, detached HEAD) en vez de seguir la punta de `main`, para que el deploy en el server sea reproducible.
+
+### Changed
+- Specs de las features `001` a `011` (ya convergidas) archivadas en `.specs/archive/`; `docs/infrastructure-design.md` se retira (su contenido vive ahora en `.specs/constitution.md` y en el `spec.md`/`plan.md` de cada feature archivada). Referencias rotas a ese archivo corregidas en `CLAUDE.md` y `README.md`.
+
 ## [0.7.1] - 2026-07-14
 
 ### Fixed
