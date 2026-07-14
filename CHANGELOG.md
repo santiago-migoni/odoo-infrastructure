@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-07-14
+
+### Fixed
+- Prod/staging quedaban en loop de reinicio tras `011-config-secrets-backup-metrics` — agregar `ENTRYPOINT` en `docker/Dockerfile` sin redeclarar `CMD` reseteaba el `CMD=[odoo]` heredado de la imagen base a vacío; al no definir `command:` los compose de `prod`/`staging`, el contenedor arrancaba sin argumentos, el entrypoint original de la imagen no matcheaba ningún caso y salía con `exit 1` antes de llegar a `wait-for-psql`/Odoo. Se agrega `CMD ["odoo"]` explícito después del `ENTRYPOINT`. Verificado de punta a punta en local: `docker compose up -d odoo` sin overrides queda `healthy`, `curl /web/health` → `200`.
+
 ## [0.7.0] - 2026-07-14
 
 ### Added

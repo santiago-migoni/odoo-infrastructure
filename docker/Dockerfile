@@ -24,3 +24,4 @@ RUN chmod +x /usr/local/bin/odoo-entrypoint.sh
 
 USER odoo
 ENTRYPOINT ["/usr/local/bin/odoo-entrypoint.sh"]
+CMD ["odoo"]
