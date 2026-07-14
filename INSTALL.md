@@ -123,10 +123,16 @@ AWS_ACCESS_KEY_ID=<Access Key ID>
 AWS_SECRET_ACCESS_KEY=<Secret Access Key>
 ```
 
-Correr el backup (la primera corrida hace `restic init` de ambos repos automáticamente):
+Levantar el contenedor (queda siempre arriba, `restart: unless-stopped` — expone un healthcheck que confirma si el último backup exitoso está fresco, ver más abajo):
 
 ```bash
-docker compose -f docker/docker-compose.backup.yml run --rm backup
+docker compose -f docker/docker-compose.backup.yml up -d backup
+```
+
+Correr el primer backup dentro del contenedor ya levantado (la primera corrida hace `restic init` de ambos repos automáticamente — el timer diario usará este mismo comando):
+
+```bash
+docker compose -f docker/docker-compose.backup.yml exec -T backup /usr/local/bin/backup.sh
 ```
 
 Confirmar el snapshot en ambos repos:
@@ -157,6 +163,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now odoo-backup.timer
 systemd-analyze verify systemd/odoo-backup.service systemd/odoo-backup.timer
 ```
+
+El contenedor expone un `HEALTHCHECK` que confirma si el último backup exitoso tiene menos de ~26h — visible en `docker compose -f docker/docker-compose.backup.yml ps` (`healthy`/`unhealthy`) y en `docker inspect --format '{{.State.Health.Status}}' <container>`. Si el timer alguna vez deja de correr o `backup.sh` empieza a fallar, el contenedor pasa a `unhealthy` sin necesidad de leer logs a mano. (cAdvisor no expone el estado de `HEALTHCHECK` de Docker como métrica — solo recursos vía cgroups — así que esto **no** es visible como tal en Prometheus/Grafana hoy; ver backlog para llevar esta señal a una métrica real.)
 
 ## 6. Stack `staging` efímero (restore + anonimización + auto-teardown)
 

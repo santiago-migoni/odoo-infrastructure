@@ -6,4 +6,4 @@ After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/odoo-infrastructure
-ExecStart=/usr/bin/docker compose -f docker/docker-compose.backup.yml run --rm backup
+ExecStart=/usr/bin/docker compose -f docker/docker-compose.backup.yml exec -T backup /usr/local/bin/backup.sh

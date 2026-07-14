@@ -37,4 +37,9 @@ restic unlock --remove-all
 restic copy --from-repo "$RESTIC_REPOSITORY_LOCAL" latest
 restic forget --keep-daily 14 --keep-weekly 4 --keep-monthly 12 --keep-yearly 3 --prune
 
+# Marcador de salud: solo se toca acá, tras el último paso que puede fallar —
+# si algo anterior corta el script (set -e), el healthcheck sigue viendo el
+# timestamp de la última corrida realmente exitosa, no una falsa señal de éxito.
+touch /backups/.last-success
+
 echo "[backup] OK"

@@ -5,6 +5,14 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.backup
     env_file: ../env/.env.backup
+    entrypoint: ["sleep", "infinity"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /backups/.last-success && [ $(($(date +%s) - $(stat -c %Y /backups/.last-success))) -lt 93600 ]"]
+      interval: 1h
+      timeout: 10s
+      retries: 1
+      start_period: 5m
     volumes:
       - odoo-data:/filestore:ro
       - /srv/odoo-backups:/backups

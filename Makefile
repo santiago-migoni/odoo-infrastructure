@@ -123,7 +123,7 @@ staging-extend:
 staging-db-restore: staging-up
 
 backup-backup-run backup:
-	$(COMPOSE_BACKUP) run --rm backup
+	$(COMPOSE_BACKUP) exec -T backup /usr/local/bin/backup.sh
 
 setup-backup-role:
 	./scripts/setup-backup-role.sh
