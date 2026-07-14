@@ -1,6 +1,6 @@
 ---
 name: odoo-infrastructure
-version: R03
+version: R04
 date: 2026-07-11
 ---
 
@@ -12,7 +12,7 @@ Infraestructura de producción self-hosted para una instancia Odoo 19 Community 
 
 ## Tech Stack
 
-- **Orquestación**: Docker Compose, 5 stacks independientes (`prod`, `staging`, `edge`, `monitoring`, `backup`), cada uno en su propio `docker-compose.<stack>.yml`
+- **Orquestación**: Docker Compose, 5 stacks independientes (`prod`, `staging`, `edge`, `monitoring`, `backup`), cada uno en su propio `docker/docker-compose.<stack>.yml`
 - **Aplicación**: Odoo 19 Community, imagen propia `FROM odoo:X.Y-YYYYMMDD` (build fechado, no flotante) + addons custom (repos por categoría, agregados en build-time vía `git-aggregator`, pineados por commit/rama en `repos.yaml`) + estructura lista para OCA/Enterprise
 - **Base de datos**: PostgreSQL contenedorizado (uno por entorno: prod, staging) + PgBouncer (`transaction pooling`) delante de cada uno
 - **Reverse proxy / exposición**: Traefik (ruteo interno por hostname) + Cloudflare Tunnel (`cloudflared`) — sin puertos publicados al host, sin gestión manual de TLS
@@ -20,12 +20,13 @@ Infraestructura de producción self-hosted para una instancia Odoo 19 Community 
 - **Linting / Formatting**: `pylint-odoo`, `flake8`, `black`, `isort` sobre el repo de addons custom
 - **CI/CD**: GitHub Actions con runner self-hosted en el propio servidor (sin puertos entrantes, polling saliente)
 - **Monitoring**: Prometheus + Grafana + cAdvisor + node-exporter + postgres-exporter, logs centralizados con Loki + Promtail
-- **Backups**: contenedor efímero propio (`postgres:16-alpine` + `restic`), destino Cloudflare R2 + copia local — restic provee cifrado en reposo, deduplicación y retención GFS declarativa en una sola herramienta
+- **Backups**: contenedor siempre-arriba (`postgres:16-alpine` + `restic`), destino Cloudflare R2 + copia local — restic provee cifrado en reposo, deduplicación y retención GFS declarativa en una sola herramienta; disparo vía systemd timer diario (`docker compose exec`, nunca `run --rm`)
 
 ## Code Principles
 
 - **Ningún contenedor publica puertos al host.** Todo vive en redes internas de Docker; `cloudflared` habla con Traefik por DNS interno, no por `localhost`. (Principio de diseño, no dependiente del estado de ningún servidor previo.)
-- **El Makefile es la única interfaz operativa una vez implementada esa feature** (roadmap #6) — compartida entre uso manual y CI, nunca lógica de deploy duplicada entre un script y el YAML del pipeline. Hasta entonces, features individuales pueden operarse con comandos `docker`/`docker compose` directos, según defina su propio spec/plan.
+- **El Makefile es la única interfaz operativa** (implementado en `008-makefile`) — compartida entre uso manual y CI futuro, nunca lógica de deploy duplicada entre un script y el YAML del pipeline.
+- **Todo scheduling recurrente usa systemd timers** — nunca un scheduler embebido en un contenedor (ej. cron interno). Un solo mecanismo de disparo en toda la infra, sin excepciones por conveniencia puntual.
 - **Staging es una réplica fiel de prod a menor escala, no un modo de ejecución distinto**: mismo modelo multiproceso (workers, sin `dev_mode`), mismo ruteo de longpolling — solo con menos recursos asignados.
 - **Staging es efímera**: se levanta on-demand (máx. ~3h), siempre restaurando el último backup de prod + anonimización antes de levantar Odoo, y se destruye (`down -v`) al terminar. No hay staging "siempre arriba".
 - **`list_db = False` y `proxy_mode = True` son no negociables en `odoo.conf`** de cualquier entorno expuesto.
@@ -36,7 +37,7 @@ Infraestructura de producción self-hosted para una instancia Odoo 19 Community 
 
 ## Naming Conventions
 
-- Archivos Compose: `docker-compose.<stack>.yml` (`prod`, `staging`, `edge`, `monitoring`, `backup`)
+- Archivos Compose: `docker/docker-compose.<stack>.yml` (`prod`, `staging`, `edge`, `monitoring`, `backup`)
 - Targets de Makefile: `<stack>-<service>-<action>` (ej. `prod-odoo-rebuild`, `staging-db-restore`) — sin variables que memorizar
 - Imágenes Docker: tag de versión mayor con build fechado (`odoo:X.Y-YYYYMMDD`) + tag de build por commit SHA, nunca `latest`
 
@@ -61,3 +62,4 @@ Infraestructura de producción self-hosted para una instancia Odoo 19 Community 
 - R01 (2026-07-10): Hallazgos de `spec-flow:analyze` sobre SPEC-001. Acotado el principio de Makefile a partir de la feature #6 (bloqueaba innecesariamente features previas que operan con `docker`/`docker compose` directo, según su propio spec); `postgres:19-alpine` → `postgres:16-alpine` en Backups (coincidir con la versión de Postgres fijada en PLAN-001, no un copy-paste del major de Odoo); ejemplos de tag de imagen actualizados a `odoo:X.Y-YYYYMMDD` (reflejar la convención de build fechado adoptada en PLAN-001).
 - R02 (2026-07-10): Addons custom pasan de "submódulo git separado" a repos por categoría agregados vía `git-aggregator` (pineados por commit/rama en `repos.yaml`) — git submodules resultaron demasiado engorrosos operativamente; `git-aggregator` mantiene el mismo pin de reproducibilidad sin esa fricción, y es la herramienta estándar del ecosistema OCA para este caso exacto.
 - R03 (2026-07-11): Backups migran de `rclone` + `gnupg` a `restic` (feature 004-backup-restic) — restic unifica cifrado en reposo, deduplicación, retención GFS declarativa y backend S3/R2 nativo en una sola herramienta, reemplazando `rclone` + `gnupg` + `tar/gzip` + la lógica GFS escrita a mano en bash. La imagen base `postgres:16-alpine` se mantiene (`pg_dump` compatible con la DB).
+- R04 (2026-07-13): Preparación para B004 (backup siempre-arriba), resuelto en sesión de `/grilling` — el contenedor de backup pasa de efímero a siempre-arriba (`restart: unless-stopped`), disparado por systemd timer vía `docker compose exec` en vez de `run --rm`; se agrega el principio de scheduling recurrente único vía systemd (nunca cron embebido en contenedor), decidido explícitamente por el usuario para mantener "una misma filosofía" entre backup y el futuro staging estable (B011). De paso, dos correcciones no relacionadas a B004 pero ya obsoletas: la convención de nombre de Archivos Compose actualizada a `docker/docker-compose.<stack>.yml` (reflejar el layout de la feature 007-repo-layout-reorg); el principio del Makefile como interfaz operativa deja de estar condicionado a "una vez implementada esa feature" — ya está implementado en 008-makefile.
