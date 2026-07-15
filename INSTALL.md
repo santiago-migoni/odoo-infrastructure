@@ -191,7 +191,7 @@ El contenedor expone un `HEALTHCHECK` que confirma si el último backup exitoso 
 
 ## 6. Stack `staging` siempre-arriba (restore + anonimización, refresh semanal)
 
-Réplica fiel de prod a menor escala (mismo modelo multiproceso, sin `dev_mode`), en su propia red aislada — no comparte `odoo-shared` con prod. Se levanta una vez y queda arriba de forma permanente (`restart: unless-stopped`, sobrevive un reinicio del server); se refresca solo una vez por semana (systemd timer → mismo ciclo restore + anonimización de siempre, **antes** de arrancar Odoo). Pausar sin perder los datos del último refresh es `docker compose -f docker/docker-compose.staging.yml stop`; bajarla del todo (destructivo) es `staging-down.sh`.
+Réplica fiel de prod a menor escala (mismo modelo multiproceso, sin `dev_mode`), en su propia red aislada — no comparte `odoo-shared` con prod. Se levanta una vez y queda arriba de forma permanente (`restart: unless-stopped`, sobrevive un reinicio del server); se refresca solo una vez por semana (systemd timer → mismo ciclo restore + anonimización de siempre, **antes** de arrancar Odoo). Pausar sin perder los datos del último refresh es `docker compose -f docker/docker-compose.staging.yml stop`; bajarla del todo (destructivo) es `nuke-staging.sh` (o `make nuke-staging`).
 
 Agregar la segunda ruta al mismo Tunnel de Cloudflare creado en el paso 4 — dashboard → el mismo tunnel → **Routes → Add route → Published application**:
 
@@ -214,7 +214,7 @@ cp config/odoo-staging.conf.example config/odoo-staging.conf   # ambos gitignore
 Levantar staging (orden crítico automático: restore → anonimización → recién Odoo):
 
 ```bash
-./scripts/staging-up.sh
+./scripts/refresh-staging.sh
 docker compose -f docker/docker-compose.staging.yml ps   # los 4 servicios healthy
 curl -s -o /dev/null -w "HTTP %{http_code}\n" https://staging.<tu-dominio-real>/web/health   # 200
 ```
@@ -226,11 +226,11 @@ docker compose -f docker/docker-compose.staging.yml exec -T db psql -U "$POSTGRE
   -c "SELECT count(*) FROM ir_mail_server WHERE active;"   # → 0
 ```
 
-Pedir un ciclo nuevo a mano en cualquier momento (`staging-up.sh` hace teardown + fresh restore si staging ya está activa), o bajarla del todo si hace falta liberar el ambiente:
+Pedir un ciclo nuevo a mano en cualquier momento (`refresh-staging.sh` hace teardown + fresh restore si staging ya está activa), o bajarla del todo si hace falta liberar el ambiente:
 
 ```bash
-./scripts/staging-up.sh      # refresh manual, mismo ciclo que el timer semanal
-./scripts/staging-down.sh    # baja y destruye volúmenes (down -v) — deliberado, no automático
+./scripts/refresh-staging.sh   # refresh manual, mismo ciclo que el timer semanal — o: make refresh-staging
+./scripts/nuke-staging.sh      # baja y destruye volúmenes (down -v) — deliberado, no automático — o: make nuke-staging
 ```
 
 Instalar el timer de refresh semanal:
@@ -296,7 +296,7 @@ Confirmar que Prometheus tiene todos los targets arriba:
 docker compose -f docker/docker-compose.monitoring.yml exec -T prometheus wget -qO- http://localhost:9090/api/v1/targets
 ```
 
-Operación diaria: `make monitoring-up` / `make monitoring-down` / `make monitoring-<servicio>-logs` (o los comandos `docker compose` de arriba, equivalentes).
+Operación diaria: `make up-monitoring` / `make down-monitoring` / `make logs-monitoring-<servicio>` (o los comandos `docker compose` de arriba, equivalentes).
 
 ## 8. Restore de prod (disaster recovery)
 
@@ -305,8 +305,8 @@ Restaura la DB + filestore de producción desde un backup restic — **destructi
 Por defecto restaura desde **R2** (off-site — cubre el caso de haber perdido el server/disco entero, que es lo que justifica esta operación). Si el disco/repo local está intacto y se busca velocidad, se puede forzar con `LOCAL=yes`:
 
 ```bash
-make prod-db-restore CONFIRM=yes            # restaura desde R2 (default)
-make prod-db-restore CONFIRM=yes LOCAL=yes  # restaura desde el repo local (más rápido, sin red)
+make restore-prod CONFIRM=yes            # restaura desde R2 (default)
+make restore-prod CONFIRM=yes LOCAL=yes  # restaura desde el repo local (más rápido, sin red)
 ```
 
 Sin `CONFIRM=yes` exacto, el comando aborta sin tocar nada — no es invocable por error. El script para `odoo`+`pgbouncer` antes de restaurar, y solo los vuelve a levantar si el restore terminó bien; si falla, prod queda parado en vez de servir datos a medias.

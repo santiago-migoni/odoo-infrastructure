@@ -13,23 +13,23 @@ Self-hosted Odoo 19 Community infrastructure for a single-tenant deployment on `
 
 ## Common Commands
 
-The Makefile is the single operational interface — shared between manual use and CI. Naming: `<stack>-<service>-<action>`.
+The Makefile is the single operational interface for manual use — a single dispatcher script (`scripts/mk-dispatch.sh`) is the source of truth for validation/menus/guided errors. Naming: `<verb>-<stack>[-<service>]` (verb first, optional service always last). Type a bare verb (`make down`) to see valid combinations; `make help` lists everything.
 
 ```bash
 # Stack lifecycle
-make prod-up                  # docker/docker-compose.prod.yml up -d (all services)
-make prod-odoo-rebuild        # build --no-cache + up -d odoo
-make prod-odoo-logs           # logs -f odoo
+make up-prod                  # docker/docker-compose.prod.yml up -d (all services)
+make rebuild-prod-odoo        # build --no-cache + up -d odoo
+make logs-prod-odoo           # logs -f odoo
 
-make staging-up               # restore last prod backup + anonymize + up (always-on, weekly auto-refresh)
-make staging-down             # down -v (destroys staging volumes)
+make refresh-staging          # restore last prod backup + anonymize + up (always-on, weekly auto-refresh)
+make nuke-staging              # down -v (destroys staging volumes)
 
-make edge-traefik-restart
-make monitoring-grafana-up
-make backup-backup-run        # ephemeral run --rm; also triggered by systemd timer daily
+make restart-edge-traefik
+make up-monitoring-grafana
+make run-backup                # runs inside the always-up backup container; also triggered by systemd timer daily
 
 # Prod DB restore — destructive, requires explicit confirmation
-make prod-db-restore CONFIRM=yes
+make restore-prod CONFIRM=yes
 ```
 
 Lint and tests run on the **addons custom repo** (separate git submodule under `addons/`):
@@ -68,7 +68,7 @@ Traefik defines **two routers per Odoo instance**: `/websocket` → port 8072 (g
 
 ### Staging Is Always-On, Weekly Refresh
 
-Every `make staging-up` restores the latest prod backup and runs the anonymization SQL **before** starting Odoo (order is critical — Odoo must not start with unanonymized prod data). Staging stays up permanently (`restart: unless-stopped`, survives a server reboot) and refreshes automatically once a week via a systemd timer running this same cycle — no auto-teardown. `postgres-exporter` lives in `docker/docker-compose.staging.yml`, not in the monitoring stack, so it starts/stops with staging.
+Every `make refresh-staging` restores the latest prod backup and runs the anonymization SQL **before** starting Odoo (order is critical — Odoo must not start with unanonymized prod data). Staging stays up permanently (`restart: unless-stopped`, survives a server reboot) and refreshes automatically once a week via a systemd timer running this same cycle — no auto-teardown. `postgres-exporter` lives in `docker/docker-compose.staging.yml`, not in the monitoring stack, so it starts/stops with staging.
 
 ### Backup
 

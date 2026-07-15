@@ -10,4 +10,6 @@ Ideas, deferred work, and future features not yet turned into a spec. Ordered by
 
 ## P2 — Medium
 
+- [ ] B011 `scripts/next-feature-number.sh` no escanea `.specs/archive/` — solo glob-ea `.specs/[0-9][0-9][0-9]-*` en el nivel superior, así que una vez que las specs convergidas se archivan ahí, devuelve `001` en vez del siguiente número real (ej. devolvió `001` con `011` ya archivada, durante la sesión que originó `012-makefile-ux`). Arreglo mínimo: que también incluya `.specs/archive/[0-9][0-9][0-9]-*` en el glob (noted 2026-07-14, from sesión de /grilling de 012-makefile-ux)
+
 ## P3 — Low

@@ -38,15 +38,15 @@ Instalación paso a paso, de punta a punta (clonar un release taggeado, build de
 ## Operación diaria
 
 ```bash
-make help                     # matriz completa de comandos
-make prod-up                  # levantar producción
-make prod-odoo-logs           # logs en vivo
-make staging-up               # refresh manual de staging (restore + anonimización)
-make backup-backup-run        # correr un backup ahora
-make prod-db-restore CONFIRM=yes   # disaster recovery — destructivo, requiere confirmación explícita
+make help                     # ayuda de dos secciones: STACKS + TAREAS
+make up-prod                  # levantar producción
+make logs-prod-odoo           # logs en vivo
+make refresh-staging          # refresh manual de staging (restore + anonimización)
+make run-backup                # correr un backup ahora
+make restore-prod CONFIRM=yes   # disaster recovery — destructivo, requiere confirmación explícita
 ```
 
-Convención de targets: `<stack>-<servicio>-<acción>` (`up`/`stop`/`restart`/`logs` para todo servicio; `rebuild`/`pull` donde aplica).
+Convención de targets: `<verbo>-<stack>[-<servicio>]` (verbo primero, servicio opcional siempre al final). Tipeá un verbo solo (`make down`) para ver qué combinaciones acepta — ningún comando termina en un error mudo de `make`.
 
 ## Desarrollo
 
