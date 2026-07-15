@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-15
+
+### Fixed
+- `backup.sh` volcaba la base con `pg_dump` sin `--no-privileges`, así que el dump incluía los `GRANT`/`ALTER DEFAULT PRIVILEGES ... TO backup_readonly` (rol que solo existe en prod, creado por `setup-backup-role.sh`). Restaurar ese dump en cualquier lugar sin ese rol — `refresh-staging.sh`, o un disaster-recovery a un server nuevo — cortaba con `role "backup_readonly" does not exist` bajo `ON_ERROR_STOP=1`. Se agrega `--no-privileges` al `pg_dump`, la única línea que cambia; verificado reproduciendo el error real contra un Postgres local (con y sin la flag) antes y después del fix. Hace falta correr un backup nuevo (`make run-backup`) para generar un snapshot limpio antes de reintentar `refresh-staging`/un restore — los snapshots ya tomados con el bug siguen teniendo los `GRANT` rotos.
+
 ## [0.9.0] - 2026-07-15
 
 ### Changed

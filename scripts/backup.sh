@@ -17,7 +17,11 @@ DUMP_FILE="$WORKDIR/db.sql"
 FILESTORE_DIR="/filestore/.local/share/Odoo/filestore/odoo"
 
 echo "[backup] Volcando base de datos (pg_dump -Fp)..."
-pg_dump -Fp -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -f "$DUMP_FILE"
+# --no-privileges: excluye los GRANT sobre backup_readonly (rol que solo
+# existe en prod) — sin esto, restaurar el dump en cualquier otro lado
+# (staging, un disaster-recovery a un server nuevo) corta con "role
+# backup_readonly does not exist" en cuanto psql llega a esas líneas.
+pg_dump -Fp --no-privileges -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -f "$DUMP_FILE"
 
 # --- Repo local: única lectura/chunkeo del filestore ---
 export RESTIC_REPOSITORY="$RESTIC_REPOSITORY_LOCAL"
