@@ -34,7 +34,7 @@ services:
 networks:
   internal:
     external: true
-    name: odoo-shared
+    name: prod-net
   staging:
     external: true
     name: staging-net

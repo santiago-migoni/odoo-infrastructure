@@ -53,6 +53,7 @@ services:
       - internal
 
   odoo:
+    image: odoo-prod:${TAG:-dev}
     build:
       context: ../..
       dockerfile: prod/docker/Dockerfile
@@ -61,7 +62,7 @@ services:
       HOST: pgbouncer
       PORT: 6432
     volumes:
-      - odoo-data:/var/lib/odoo
+      - odoo-data-prod:/var/lib/odoo
       - ../config/odoo.conf:/etc/odoo/odoo.conf:ro
     depends_on:
       pgbouncer:
@@ -86,10 +87,10 @@ services:
 networks:
   internal:
     external: true
-    name: odoo-shared
+    name: prod-net
 
 volumes:
   db-data:
-  odoo-data:
+  odoo-data-prod:
     external: true
-    name: odoo-data
+    name: odoo-data-prod

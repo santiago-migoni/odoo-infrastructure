@@ -33,7 +33,7 @@ echo "[prod-db-restore] Parando odoo + pgbouncer (liberar conexiones a la DB)...
 docker compose -f prod/docker/docker-compose.yml stop odoo pgbouncer
 
 echo "[prod-db-restore] Restaurando..."
-docker run --rm --network odoo-shared \
+docker run --rm --network prod-net \
   -e RESTIC_REPOSITORY="$RESTIC_REPOSITORY" \
   -e RESTIC_PASSWORD="$RESTIC_PASSWORD" \
   -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
@@ -41,7 +41,7 @@ docker run --rm --network odoo-shared \
   -e POSTGRES_USER="$POSTGRES_USER" \
   -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
   -v /srv/odoo-backups:/backups:ro \
-  -v odoo-data:/filestore \
+  -v odoo-data-prod:/filestore \
   -v "$(pwd)/scripts/restore-prod.sh:/restore-prod.sh:ro" \
   --entrypoint sh \
   odoo-restore-tools:local /restore-prod.sh

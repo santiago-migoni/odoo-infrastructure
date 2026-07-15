@@ -54,6 +54,7 @@ services:
       - staging
 
   odoo-staging:
+    image: odoo-staging:${TAG:-dev}
     build:
       context: ../..
       dockerfile: staging/docker/Dockerfile
