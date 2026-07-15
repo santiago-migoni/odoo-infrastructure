@@ -1,7 +1,7 @@
 #!/bin/sh
 # Restaura DB + filestore del último backup de prod (repo restic LOCAL,
-# nunca R2) hacia staging. Corre dentro de la imagen docker/Dockerfile.backup
-# (ya trae restic + cliente pg) vía --entrypoint, ver scripts/staging-up.sh.
+# nunca R2) hacia staging. Corre dentro de la imagen staging/docker/Dockerfile.tools
+# (ya trae restic + cliente pg) vía --entrypoint, ver scripts/refresh-staging.sh.
 #
 # El dump se carga directo contra db:5432, nunca por pgbouncer:6432 — el
 # transaction pooling rompe una carga de dump grande a nivel de sesión.

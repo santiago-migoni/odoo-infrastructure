@@ -3,15 +3,15 @@
 # o sincroniza su password si ya existe (re-correr con un BACKUP_DB_PASSWORD
 # distinto actualiza el rol, no lo deja pegado al valor de la primera corrida).
 # Se corre a mano, contra el servicio `db` (ver INSTALL.md).
-# Lee POSTGRES_USER de env/.env.prod; requiere BACKUP_DB_PASSWORD en el entorno
-# (el mismo valor que después va en env/.env.backup).
+# Lee POSTGRES_USER de prod/env/.env.prod; requiere BACKUP_DB_PASSWORD en el entorno
+# (el mismo valor que después va en backup/env/.env.backup).
 set -e
 cd "$(dirname "$0")/.."
 
 : "${BACKUP_DB_PASSWORD:?falta BACKUP_DB_PASSWORD en el entorno}"
-. ./env/.env.prod
+. ./prod/env/.env.prod
 
-docker compose -f docker/docker-compose.prod.yml exec -T db psql -U "$POSTGRES_USER" -d odoo <<SQL
+docker compose -f prod/docker/docker-compose.yml exec -T db psql -U "$POSTGRES_USER" -d odoo <<SQL
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'backup_readonly') THEN

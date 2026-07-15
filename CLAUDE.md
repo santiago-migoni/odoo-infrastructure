@@ -17,7 +17,7 @@ The Makefile is the single operational interface for manual use — a single dis
 
 ```bash
 # Stack lifecycle
-make up-prod                  # docker/docker-compose.prod.yml up -d (all services)
+make up-prod                  # prod/docker/docker-compose.yml up -d (all services)
 make rebuild-prod-odoo        # build --no-cache + up -d odoo
 make logs-prod-odoo           # logs -f odoo
 
@@ -46,13 +46,15 @@ odoo-bin -d test_db --test-enable --stop-after-init -i <module>
 
 ### 5 Docker Compose Stacks
 
+Each stack is self-contained in its own top-level folder (`<stack>/docker/`, `<stack>/config/`, `<stack>/env/` — feature `013-stack-layout-reorg`), not grouped by artifact type.
+
 | Stack        | File                                   | Services                                                                                          |
 |---           |---                                     |---                                                                                                |
-| `prod`       | `docker/docker-compose.prod.yml`       | `odoo`, `db`, `pgbouncer`                                                                         |
-| `staging`    | `docker/docker-compose.staging.yml`    | `odoo`, `db`, `pgbouncer`, `postgres-exporter`                                                    |
-| `edge`       | `docker/docker-compose.edge.yml`       | `traefik`, `cloudflared`                                                                          |
-| `monitoring` | `docker/docker-compose.monitoring.yml` | `prometheus`, `grafana`, `loki`, `promtail`, `cadvisor`, `node-exporter` `postgres-exporter-prod` |
-| `backup`     | `docker/docker-compose.backup.yml`     | `backup` (ephemeral, `run --rm`)                                                                  |
+| `prod`       | `prod/docker/docker-compose.yml`       | `odoo`, `db`, `pgbouncer`                                                                         |
+| `staging`    | `staging/docker/docker-compose.yml`    | `odoo`, `db`, `pgbouncer`, `postgres-exporter`                                                    |
+| `edge`       | `edge/docker/docker-compose.yml`       | `traefik`, `cloudflared`                                                                          |
+| `monitoring` | `monitoring/docker/docker-compose.yml` | `prometheus`, `grafana`, `loki`, `promtail`, `cadvisor`, `node-exporter` `postgres-exporter-prod` |
+| `backup`     | `backup/docker/docker-compose.yml`     | `backup` (ephemeral, `run --rm`)                                                                  |
 
 All stacks share a single Docker internal network. **No container publishes ports to the host.** `cloudflared` talks to Traefik via Docker DNS (`http://traefik:80`).
 
@@ -64,11 +66,11 @@ Traefik defines **two routers per Odoo instance**: `/websocket` → port 8072 (g
 
 ### Odoo Image
 
-`FROM odoo:19.0` — custom `docker/Dockerfile` copies `addons/` submodule, installs extra Python requirements. Tagged by commit SHA (never `latest`). Runs as `odoo` user (UID 101, never root).
+`FROM odoo:19.0` — `prod` and `staging` each have their own independent `Dockerfile` (`prod/docker/Dockerfile`, `staging/docker/Dockerfile`, never shared) that copies `addons/`, installs extra Python requirements. Same content on day one, free to diverge afterward — promoting a staging-validated change to prod is an explicit code change (PR porting the diff), never automatic. Tagged by commit SHA (never `latest`). Runs as `odoo` user (UID 101, never root).
 
 ### Staging Is Always-On, Weekly Refresh
 
-Every `make refresh-staging` restores the latest prod backup and runs the anonymization SQL **before** starting Odoo (order is critical — Odoo must not start with unanonymized prod data). Staging stays up permanently (`restart: unless-stopped`, survives a server reboot) and refreshes automatically once a week via a systemd timer running this same cycle — no auto-teardown. `postgres-exporter` lives in `docker/docker-compose.staging.yml`, not in the monitoring stack, so it starts/stops with staging.
+Every `make refresh-staging` restores the latest prod backup and runs the anonymization SQL **before** starting Odoo (order is critical — Odoo must not start with unanonymized prod data). Staging stays up permanently (`restart: unless-stopped`, survives a server reboot) and refreshes automatically once a week via a systemd timer running this same cycle — no auto-teardown. `postgres-exporter` lives in `staging/docker/docker-compose.yml`, not in the monitoring stack, so it starts/stops with staging.
 
 ### Backup
 

@@ -1,9 +1,8 @@
-docker/docker-compose.override.yml
-env/.env.prod
-env/.env.staging
-env/.env.edge
-env/.env.backup
-env/.env.monitoring
-config/odoo.conf
-config/odoo-staging.conf
+prod/env/.env.prod
+staging/env/.env.staging
+edge/env/.env.edge
+backup/env/.env.backup
+monitoring/env/.env.monitoring
+prod/config/odoo.conf
+staging/config/odoo-staging.conf
 .DS_Store

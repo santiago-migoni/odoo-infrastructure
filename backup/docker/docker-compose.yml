@@ -2,8 +2,8 @@ name: odoo-infrastructure-backup
 services:
   backup:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile.backup
+      context: ../..
+      dockerfile: backup/docker/Dockerfile
     env_file: ../env/.env.backup
     entrypoint: ["sleep", "infinity"]
     restart: unless-stopped

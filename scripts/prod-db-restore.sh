@@ -10,12 +10,12 @@ cd "$(dirname "$0")/.."
 
 if [ "$CONFIRM" != "yes" ]; then
   echo "[prod-db-restore] ABORTADO: falta CONFIRM=yes. Este restore sobrescribe la DB y el filestore de producción." >&2
-  echo "[prod-db-restore] Uso: make prod-db-restore CONFIRM=yes [LOCAL=yes]" >&2
+  echo "[prod-db-restore] Uso: make restore-prod CONFIRM=yes [LOCAL=yes]" >&2
   exit 1
 fi
 
-. ./env/.env.backup
-. ./env/.env.prod
+. ./backup/env/.env.backup
+. ./prod/env/.env.prod
 
 if [ "$LOCAL" = "yes" ]; then
   echo "[prod-db-restore] Fuente: repo restic LOCAL ($RESTIC_REPOSITORY_LOCAL)"
@@ -26,11 +26,11 @@ else
   export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
 fi
 
-echo "[prod-db-restore] Construyendo imagen de herramientas (restic + psql, docker/Dockerfile.backup)..."
-docker build -f docker/Dockerfile.backup -t odoo-restore-tools:local . >/dev/null
+echo "[prod-db-restore] Construyendo imagen de herramientas (restic + psql, prod/docker/Dockerfile.tools)..."
+docker build -f prod/docker/Dockerfile.tools -t odoo-restore-tools:local . >/dev/null
 
 echo "[prod-db-restore] Parando odoo + pgbouncer (liberar conexiones a la DB)..."
-docker compose -f docker/docker-compose.prod.yml stop odoo pgbouncer
+docker compose -f prod/docker/docker-compose.yml stop odoo pgbouncer
 
 echo "[prod-db-restore] Restaurando..."
 docker run --rm --network odoo-shared \
@@ -47,6 +47,6 @@ docker run --rm --network odoo-shared \
   odoo-restore-tools:local /restore-prod.sh
 
 echo "[prod-db-restore] Restore OK — levantando prod..."
-docker compose -f docker/docker-compose.prod.yml up -d
+docker compose -f prod/docker/docker-compose.yml up -d
 
 echo "[prod-db-restore] OK"

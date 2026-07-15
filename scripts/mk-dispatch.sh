@@ -20,7 +20,7 @@ services_for() {
   esac
 }
 
-compose_file_for() { echo "docker/docker-compose.$1.yml"; }
+compose_file_for() { echo "$1/docker/docker-compose.yml"; }
 
 # Único lugar que sabe qué servicios se construyen acá (vs. imagen oficial).
 is_own_build() {
@@ -240,7 +240,7 @@ case "$target" in
   refresh) task_refresh_menu ;;
   restore) task_restore_menu ;;
   setup) task_setup_menu ;;
-  run-backup) docker compose -f docker/docker-compose.backup.yml exec -T backup /usr/local/bin/backup.sh ;;
+  run-backup) docker compose -f backup/docker/docker-compose.yml exec -T backup /usr/local/bin/backup.sh ;;
   refresh-staging) ./scripts/refresh-staging.sh ;;
   restore-prod) ./scripts/prod-db-restore.sh ;;
   nuke-staging) ./scripts/nuke-staging.sh ;;

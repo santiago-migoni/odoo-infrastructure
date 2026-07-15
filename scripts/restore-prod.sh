@@ -1,6 +1,6 @@
 #!/bin/sh
 # Restaura DB + filestore de un backup de prod hacia la propia prod (disaster
-# recovery). Corre dentro de la imagen docker/Dockerfile.backup (ya trae
+# recovery). Corre dentro de la imagen prod/docker/Dockerfile.tools (ya trae
 # restic + cliente pg) vía --entrypoint, ver scripts/prod-db-restore.sh.
 #
 # A diferencia de restore-staging.sh: RESTIC_REPOSITORY ya viene seteada por

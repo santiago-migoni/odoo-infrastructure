@@ -4,6 +4,6 @@
 set -e
 cd "$(dirname "$0")/.."
 
-docker compose -f docker/docker-compose.staging.yml down -v
+docker compose -f staging/docker/docker-compose.yml down -v
 
 echo "[nuke-staging] bajada, volúmenes destruidos"

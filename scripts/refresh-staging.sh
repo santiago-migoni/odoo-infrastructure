@@ -7,21 +7,21 @@
 set -e
 cd "$(dirname "$0")/.."
 
-. ./env/.env.staging
+. ./staging/env/.env.staging
 
-if docker compose -f docker/docker-compose.staging.yml ps -q db 2>/dev/null | grep -q .; then
+if docker compose -f staging/docker/docker-compose.yml ps -q db 2>/dev/null | grep -q .; then
   echo "[refresh-staging] staging ya está activa — bajando para un ciclo nuevo (teardown + fresh restore)..."
   ./scripts/nuke-staging.sh
 fi
 
-echo "[refresh-staging] Construyendo imagen de herramientas (restic + psql, docker/Dockerfile.backup)..."
-docker build -f docker/Dockerfile.backup -t odoo-restore-tools:local . >/dev/null
+echo "[refresh-staging] Construyendo imagen de herramientas (restic + psql, staging/docker/Dockerfile.tools)..."
+docker build -f staging/docker/Dockerfile.tools -t odoo-restore-tools:local . >/dev/null
 
 echo "[refresh-staging] Levantando solo db..."
-docker compose -f docker/docker-compose.staging.yml up -d --wait db
+docker compose -f staging/docker/docker-compose.yml up -d --wait db
 
 echo "[refresh-staging] Restaurando el último backup (repo restic local)..."
-docker run --rm --network staging-net --env-file env/.env.staging \
+docker run --rm --network staging-net --env-file staging/env/.env.staging \
   -v /srv/odoo-backups:/backups:ro \
   -v odoo-data-staging:/staging-data \
   -v "$(pwd)/scripts/restore-staging.sh:/restore-staging.sh:ro" \
@@ -37,6 +37,6 @@ docker run --rm --network staging-net \
   -h db -p 5432 -U "$POSTGRES_USER" -d odoo_staging -v ON_ERROR_STOP=1 --single-transaction -f /anonymize-staging.sql
 
 echo "[refresh-staging] Restore y anonimización OK — levantando pgbouncer + odoo-staging + postgres-exporter..."
-docker compose -f docker/docker-compose.staging.yml up -d pgbouncer odoo-staging postgres-exporter
+docker compose -f staging/docker/docker-compose.yml up -d pgbouncer odoo-staging postgres-exporter
 
 echo "[refresh-staging] OK — staging arriba en https://staging.miempresa.com"
