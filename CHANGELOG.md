@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING**: convención de targets del `Makefile` invertida de `<stack>-<servicio>-<acción>` a `<verbo>-<stack>[-<servicio>]` (`012-makefile-ux`) — ej. `prod-up` pasa a ser `up-prod`, `prod-db-restore` pasa a ser `restore-prod`. Motivado por un fallo real de uso (no se encontró `prod-down` pese a existir); el problema era descubribilidad, no arquitectura. Toda la validación/menús/errores guiados vive ahora en un único dispatcher (`scripts/mk-dispatch.sh`) — el `Makefile` se reduce a 3 líneas. Ningún comando termina en un error mudo de `make`: un verbo sin stack (`make down`) muestra el menú de combinaciones válidas; una combinación inválida (`make pull-prod-odoo`) guía al comando correcto. `down` pasa a conservar datos siempre, en todos los stacks sin excepción (antes `staging-down` destruía volúmenes bajo el mismo verbo que `prod-down`, que no destruía nada); el borrado deliberado de volúmenes se aísla en `nuke-staging`, único, sin `nuke` genérico. Nuevo `make ps` global: tabla propia de los 5 stacks de una, en vez de 5 bloques nativos de `docker compose ps`. `run-backup`/`refresh-staging`/`restore-prod`/`nuke-staging`/`setup-backup-role`/`setup-monitoring-role` reemplazan a los alias viejos (`backup-backup-run`, `staging-up`, `prod-db-restore`, `staging-down`); los alias ambiguos/silenciosos retirados (`backup`, `staging-db-restore`) ahora explican en vez de fallar o ejecutar algo distinto a su nombre. Enmienda la constitución (R06). `systemd` sigue invocando los scripts directo, nunca el dispatcher (excepción deliberada, ya documentada). De paso cierra un hueco preexistente: `backup` no tenía target de `rebuild`, ahora sí (`rebuild-backup-backup`).
+
 ## [0.7.2] - 2026-07-14
 
 ### Added
